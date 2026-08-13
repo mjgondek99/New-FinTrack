@@ -214,46 +214,111 @@ export default function App() {
       .then((res) => res.json())
       .then((res) => {
         if (res.status === 'ok' && res.data) {
-          if (res.data.users && Array.isArray(res.data.users) && res.data.users.length > 0) {
-            setUserAccounts(res.data.users);
-            localStorage.setItem('fintrack_users', JSON.stringify(res.data.users));
+          // 1. Users
+          if (res.data.users && Array.isArray(res.data.users)) {
+            setUserAccounts((prevLocalUsers) => {
+              const serverUsers: UserAccount[] = res.data.users;
+              const missingOnServer = prevLocalUsers.filter(
+                (lu) => !serverUsers.some((su) => su.id === lu.id || su.username.toLowerCase() === lu.username.toLowerCase())
+              );
+              if (missingOnServer.length > 0) {
+                const merged = [...serverUsers, ...missingOnServer];
+                syncMutation('users', merged, 'fintrack_users');
+                return merged;
+              }
+              localStorage.setItem('fintrack_users', JSON.stringify(serverUsers));
+              return serverUsers;
+            });
             setCurrentUser((prev) => {
               const matched = res.data.users.find((u: UserAccount) => u.id === prev.id);
               return matched || prev;
             });
           }
+
+          // 2. Transactions
           if (res.data.transactions && Array.isArray(res.data.transactions)) {
-            setTransactions(res.data.transactions);
-            localStorage.setItem('fintrack_transactions', JSON.stringify(res.data.transactions));
+            setTransactions((prevLocalTrxs) => {
+              const serverTrxs: TransactionItem[] = res.data.transactions;
+              const missingOnServer = prevLocalTrxs.filter(
+                (lt) => !serverTrxs.some((st) => st.id === lt.id)
+              );
+              if (missingOnServer.length > 0) {
+                const merged = [...serverTrxs, ...missingOnServer];
+                syncMutation('transactions', merged, 'fintrack_transactions');
+                return merged;
+              }
+              localStorage.setItem('fintrack_transactions', JSON.stringify(serverTrxs));
+              return serverTrxs;
+            });
           }
+
+          // 3. Kasbons
           if (res.data.kasbons && Array.isArray(res.data.kasbons)) {
-            setKasbons(res.data.kasbons);
-            localStorage.setItem('fintrack_kasbons', JSON.stringify(res.data.kasbons));
+            setKasbons((prevLocal) => {
+              const serverData: KasbonItem[] = res.data.kasbons;
+              const missing = prevLocal.filter((l) => !serverData.some((s) => s.id === l.id));
+              if (missing.length > 0) {
+                const merged = [...serverData, ...missing];
+                syncMutation('kasbons', merged, 'fintrack_kasbons');
+                return merged;
+              }
+              localStorage.setItem('fintrack_kasbons', JSON.stringify(serverData));
+              return serverData;
+            });
           }
+
+          // 4. Pengeluaran
           if (res.data.pengeluaran && Array.isArray(res.data.pengeluaran)) {
-            setPengeluaranList(res.data.pengeluaran);
-            localStorage.setItem('fintrack_pengeluaran', JSON.stringify(res.data.pengeluaran));
+            setPengeluaranList((prevLocal) => {
+              const serverData: PengeluaranItem[] = res.data.pengeluaran;
+              const missing = prevLocal.filter((l) => !serverData.some((s) => s.id === l.id));
+              if (missing.length > 0) {
+                const merged = [...serverData, ...missing];
+                syncMutation('pengeluaran', merged, 'fintrack_pengeluaran');
+                return merged;
+              }
+              localStorage.setItem('fintrack_pengeluaran', JSON.stringify(serverData));
+              return serverData;
+            });
           }
+
+          // 5. Mutasis
           if (res.data.mutasis && Array.isArray(res.data.mutasis)) {
-            setMutasis(res.data.mutasis);
-            localStorage.setItem('fintrack_mutasis', JSON.stringify(res.data.mutasis));
+            setMutasis((prevLocal) => {
+              const serverData: MutasiSaldoItem[] = res.data.mutasis;
+              const missing = prevLocal.filter((l) => !serverData.some((s) => s.id === l.id));
+              if (missing.length > 0) {
+                const merged = [...serverData, ...missing];
+                syncMutation('mutasis', merged, 'fintrack_mutasis');
+                return merged;
+              }
+              localStorage.setItem('fintrack_mutasis', JSON.stringify(serverData));
+              return serverData;
+            });
           }
-          if (res.data.platforms && Array.isArray(res.data.platforms)) {
+
+          // 6. Platforms
+          if (res.data.platforms && Array.isArray(res.data.platforms) && res.data.platforms.length > 0) {
             setPlatforms(res.data.platforms);
             localStorage.setItem('fintrack_platforms', JSON.stringify(res.data.platforms));
           }
-          if (res.data.jenis && Array.isArray(res.data.jenis)) {
+
+          // 7. Jenis
+          if (res.data.jenis && Array.isArray(res.data.jenis) && res.data.jenis.length > 0) {
             setJenisList(res.data.jenis);
             localStorage.setItem('fintrack_jenis', JSON.stringify(res.data.jenis));
           }
+
+          // 8. Saldo Awal Map
           if (res.data.saldoAwalMap && typeof res.data.saldoAwalMap === 'object') {
             setSaldoAwalMap(res.data.saldoAwalMap);
             localStorage.setItem('fintrack_saldo_awal', JSON.stringify(res.data.saldoAwalMap));
           }
         }
       })
-      .catch(() => {})
-      .finally(() => {});
+      .catch((err) => {
+        console.error('Error fetching data from server:', err);
+      });
   };
 
   // Fetch initial data & auto-poll every 3 seconds for real-time sync across devices

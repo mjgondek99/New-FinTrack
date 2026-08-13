@@ -94,30 +94,27 @@ function getKv(key: string, defaultValue: any) {
   try {
     const stmt = db.prepare('SELECT value FROM kv WHERE key = ?');
     stmt.bind([key]);
+    let result = defaultValue;
     if (stmt.step()) {
       const row = stmt.getAsObject();
-      stmt.free();
       if (row.value !== undefined && row.value !== null) {
-        return JSON.parse(row.value as string);
+        result = JSON.parse(row.value as string);
       }
     }
     stmt.free();
+    return result;
   } catch (e) {
-    console.error('Error reading kv:', key, e);
+    console.error('Error reading kv for key:', key, e);
+    return defaultValue;
   }
-  return defaultValue;
 }
 
 function setKv(key: string, value: any) {
   try {
-    db.run(
-      `INSERT INTO kv (key, value) VALUES (?, ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value;`,
-      [key, JSON.stringify(value)]
-    );
+    db.run('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)', [key, JSON.stringify(value)]);
     saveDb();
   } catch (e) {
-    console.error('Error writing kv:', key, e);
+    console.error('Error writing kv for key:', key, e);
   }
 }
 
