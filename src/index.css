@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Work Sans', sans-serif;
+  }
+  
+  .font-mono-jetbrains {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(198, 198, 205, 0.4);
+}
+
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 24px;
+}
+
+.bento-item-large {
+  grid-column: span 2;
+}
+
+@media (max-width: 1024px) {
+  .bento-item-large {
+    grid-column: span 1;
+  }
+}
+
+/* Custom scrollbar for riwayat login / overflow containers */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #eff4ff;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb {
+  background: #c6c6cd;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #76777d;
+}

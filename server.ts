@@ -1,0 +1,167 @@
+import express from 'express';
+import path from 'path';
+import fs from 'fs';
+import initSqlJs, { Database } from 'sql.js';
+import { createServer as createViteServer } from 'vite';
+
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+const DB_FILE = path.join(process.cwd(), 'fintrack.db');
+
+const DEFAULT_USERS = [
+  {
+    id: 'usr-admin-1',
+    username: 'admin',
+    nama: 'Budi (Admin Utama)',
+    role: 'admin',
+    password: '123',
+    avatarUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDF9U4CSCjhOmmHyRpV9fMEoHdq7v_PLRO2pfrC-LsrdAZFiD2XaUCCsq5yxLY8CA6VOXTFHVukJKAvhFXaJ3M8UEOwB7it6tJ5ONKSQBMOFSeSs473lpc5bLS7oZZhkRcDEne5XMObGJpccu5jKdHLjkTj-5C9vWEBvC9pXU25wXemoNICJSumtgVh070E-VvEy80BJP5-pUt-mwFc8RLCE8eviNEirOnAanA_RrWm9_U37Gz7Jfkw'
+  },
+  {
+    id: 'usr-kasir-1',
+    username: 'kasir1',
+    nama: 'Siti (Kasir Shift 1)',
+    role: 'kasir',
+    password: '123',
+    avatarUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDF9U4CSCjhOmmHyRpV9fMEoHdq7v_PLRO2pfrC-LsrdAZFiD2XaUCCsq5yxLY8CA6VOXTFHVukJKAvhFXaJ3M8UEOwB7it6tJ5ONKSQBMOFSeSs473lpc5bLS7oZZhkRcDEne5XMObGJpccu5jKdHLjkTj-5C9vWEBvC9pXU25wXemoNICJSumtgVh070E-VvEy80BJP5-pUt-mwFc8RLCE8eviNEirOnAanA_RrWm9_U37Gz7Jfkw'
+  }
+];
+
+let db: Database;
+
+function saveDb() {
+  if (db) {
+    const data = db.export();
+    const buffer = Buffer.from(data);
+    fs.writeFileSync(DB_FILE, buffer);
+  }
+}
+
+async function initDatabase() {
+  const wasmPath = path.join(process.cwd(), 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm');
+  const SQL = await initSqlJs({
+    locateFile: (file) => {
+      if (file.endsWith('.wasm') && fs.existsSync(wasmPath)) {
+        return wasmPath;
+      }
+      return file;
+    }
+  });
+
+  if (fs.existsSync(DB_FILE)) {
+    const fileBuffer = fs.readFileSync(DB_FILE);
+    db = new SQL.Database(fileBuffer);
+  } else {
+    db = new SQL.Database();
+  }
+
+  // Create key-value table for flexible JSON persistence if needed, and specialized tables
+  db.run(`
+    CREATE TABLE IF NOT EXISTS kv (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    );
+  `);
+
+  if (!getKv('users', null)) {
+    setKv('users', DEFAULT_USERS);
+  }
+
+  saveDb();
+}
+
+function getKv(key: string, defaultValue: any) {
+  try {
+    const stmt = db.prepare('SELECT value FROM kv WHERE key = :key');
+    stmt.bind({ ':key': key });
+    if (stmt.step()) {
+      const row = stmt.getAsObject();
+      stmt.free();
+      return JSON.parse(row.value as string);
+    }
+    stmt.free();
+  } catch (e) {
+    console.error('Error reading kv:', key, e);
+  }
+  return defaultValue;
+}
+
+function setKv(key: string, value: any) {
+  try {
+    const stmt = db.prepare(`
+      INSERT INTO kv (key, value) VALUES (:key, :value)
+      ON CONFLICT(key) DO UPDATE SET value = :value;
+    `);
+    stmt.run({ ':key': key, ':value': JSON.stringify(value) });
+    stmt.free();
+    saveDb();
+  } catch (e) {
+    console.error('Error writing kv:', key, e);
+  }
+}
+
+async function startServer() {
+  await initDatabase();
+
+  const app = express();
+  app.use(express.json({ limit: '10mb' }));
+
+  // Prevent browser caching for API endpoints
+  app.use('/api', (req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    next();
+  });
+
+  // API Endpoints
+  app.get('/api/data', (req, res) => {
+    const data = {
+      users: getKv('users', null),
+      transactions: getKv('transactions', null),
+      kasbons: getKv('kasbons', null),
+      pengeluaran: getKv('pengeluaran', null),
+      mutasis: getKv('mutasis', null),
+      platforms: getKv('platforms', null),
+      jenis: getKv('jenis', null),
+      saldoAwalMap: getKv('saldoAwalMap', null),
+      settings: getKv('settings', null),
+    };
+    res.json({ status: 'ok', data });
+  });
+
+  app.post('/api/sync', (req, res) => {
+    const { key, value } = req.body;
+    if (!key) {
+      return res.status(400).json({ error: 'Key is required' });
+    }
+    setKv(key, value);
+    res.json({ status: 'ok', key });
+  });
+
+  app.post('/api/reset', (req, res) => {
+    db.run('DELETE FROM kv;');
+    saveDb();
+    res.json({ status: 'ok', message: 'Database reset successfully' });
+  });
+
+  // Vite Middleware for Development or Static Files for Production
+  if (process.env.NODE_ENV !== 'production') {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server FinTrack + SQLite running on http://localhost:${PORT}`);
+  });
+}
+
+startServer().catch((err) => {
+  console.error('Failed to start server:', err);
+});
