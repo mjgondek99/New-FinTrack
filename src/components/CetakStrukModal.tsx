@@ -8,6 +8,29 @@ interface CetakStrukModalProps {
   transactions: TransactionItem[];
 }
 
+// Helper: encode Uint8Array (byte ESC/POS) menjadi base64 untuk RawBT
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+// Helper: gabungkan beberapa array angka/teks jadi satu Uint8Array
+function buildEscPosBytes(parts: (number[] | string)[]): Uint8Array {
+  const encoder = new TextEncoder();
+  const chunks: number[] = [];
+  parts.forEach((part) => {
+    if (typeof part === 'string') {
+      chunks.push(...Array.from(encoder.encode(part)));
+    } else {
+      chunks.push(...part);
+    }
+  });
+  return new Uint8Array(chunks);
+}
+
 export const CetakStrukModal: React.FC<CetakStrukModalProps> = ({
   isOpen,
   onClose,
@@ -58,44 +81,42 @@ ${customNote}
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handlePrint = () => {
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Struk - ${currentTrx?.id}</title>
-            <style>
-              body { font-family: 'Courier New', Courier, monospace; width: 300px; padding: 15px; font-size: 12px; }
-              .center { text-align: center; }
-              .line { border-bottom: 1px dashed #000; margin: 8px 0; }
-              .row { display: flex; justify-content: space-between; margin: 3px 0; }
-              .bold { font-weight: bold; }
-            </style>
-          </head>
-          <body>
-            <div class="center bold" style="font-size: 14px;">${storeName}</div>
-            <div class="center" style="font-size: 10px; margin-bottom: 8px;">${agentAddress}</div>
-            <div class="line"></div>
-            <div class="row"><span>ID TRX:</span> <span>${currentTrx?.id}</span></div>
-            <div class="row"><span>TGL:</span> <span>${dateFormatted}</span></div>
-            <div class="row"><span>PLATFORM:</span> <span>${currentTrx?.platform}</span></div>
-            <div class="row"><span>PELANGGAN:</span> <span>${finalPelanggan}</span></div>
-            <div class="line"></div>
-            <div class="row"><span>Nominal:</span> <span>Rp ${finalJumlah.toLocaleString('id-ID')}</span></div>
-            <div class="row"><span>Admin:</span> <span>Rp ${finalBiaya.toLocaleString('id-ID')}</span></div>
-            <div class="line"></div>
-            <div class="row bold" style="font-size: 13px;"><span>TOTAL:</span> <span>Rp ${totalBayar.toLocaleString('id-ID')}</span></div>
-            <div class="row bold" style="color: green;"><span>STATUS:</span> <span>BERHASIL</span></div>
-            <div class="line"></div>
-            <div class="center" style="font-size: 10px; margin-top: 10px;">${customNote}</div>
-            <script>window.print();</script>
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-    }
-  };
+ const handlePrint = () => {
+  const ESC = 0x1B;
+  const GS = 0x1D;
+
+  const bytes = buildEscPosBytes([
+    [ESC, 0x40],                    // Initialize printer
+    [ESC, 0x61, 0x01],              // Align center
+    [ESC, 0x45, 0x01],              // Bold ON
+    `${storeName}\n`,
+    [ESC, 0x45, 0x00],              // Bold OFF
+    `${agentAddress}\n`,
+    '--------------------------------\n',
+    [ESC, 0x61, 0x00],              // Align left
+    `ID TRX : ${currentTrx?.id}\n`,
+    `TGL    : ${dateFormatted}\n`,
+    `PLATFORM: ${currentTrx?.platform}\n`,
+    `JENIS  : ${currentTrx?.jenis}\n`,
+    `PLG    : ${finalPelanggan}\n`,
+    '--------------------------------\n',
+    `Nominal      : Rp ${finalJumlah.toLocaleString('id-ID')}\n`,
+    `Biaya Admin  : Rp ${finalBiaya.toLocaleString('id-ID')}\n`,
+    '--------------------------------\n',
+    [ESC, 0x45, 0x01],              // Bold ON
+    `TOTAL BAYAR : Rp ${totalBayar.toLocaleString('id-ID')}\n`,
+    `STATUS      : BERHASIL\n`,
+    [ESC, 0x45, 0x00],              // Bold OFF
+    '--------------------------------\n',
+    [ESC, 0x61, 0x01],              // Align center
+    `${customNote}\n`,
+    '\n\n\n',
+    [GS, 0x56, 0x00],                // Potong kertas (full cut)
+  ]);
+
+  const base64Data = bytesToBase64(bytes);
+  window.location.href = `rawbt:base64,${base64Data}`;
+};
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
