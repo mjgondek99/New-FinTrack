@@ -89,7 +89,14 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Right side actions */}
-      <div className="flex items-center gap-4 relative">
+      <div className="flex items-center gap-2 sm:gap-4 relative">
+        {/* Live Multi-Device Sync Indicator */}
+        <div className="flex items-center gap-1 px-2.5 py-1 bg-emerald-50 border border-emerald-200 rounded-full text-[11px] font-bold text-[#006c49]">
+          <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+          <span className="hidden sm:inline">Terhubung Realtime</span>
+          <span className="sm:hidden">Live</span>
+        </div>
+
         <div className="flex gap-1 text-[#45464d]">
           {/* Notifications */}
           <div className="relative">

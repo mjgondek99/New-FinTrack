@@ -23,34 +23,26 @@ export const LoginView: React.FC<LoginViewProps> = ({ userAccounts, onLoginSucce
     const cleanUsername = username.trim().toLowerCase();
     const cleanPassword = password.trim();
 
-    // 1. Check local state first
+    // Fetch live users from server first to ensure fresh data
     let currentList = userAccounts;
-    let foundUser = currentList.find(
+    try {
+      const res = await fetch('/api/data', { cache: 'no-store' });
+      const json = await res.json();
+      if (json.status === 'ok' && json.data && Array.isArray(json.data.users) && json.data.users.length > 0) {
+        currentList = json.data.users;
+        if (onRefreshUsers) {
+          onRefreshUsers(currentList);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching live users during login:', err);
+    }
+
+    const foundUser = currentList.find(
       (u) =>
         u.username.trim().toLowerCase() === cleanUsername &&
         (u.password.trim() === cleanPassword || u.password === password)
     );
-
-    // 2. If not found, fetch live users from server
-    if (!foundUser) {
-      try {
-        const res = await fetch('/api/data', { cache: 'no-store' });
-        const json = await res.json();
-        if (json.status === 'ok' && json.data && Array.isArray(json.data.users) && json.data.users.length > 0) {
-          currentList = json.data.users;
-          if (onRefreshUsers) {
-            onRefreshUsers(currentList);
-          }
-          foundUser = currentList.find(
-            (u) =>
-              u.username.trim().toLowerCase() === cleanUsername &&
-              (u.password.trim() === cleanPassword || u.password === password)
-          );
-        }
-      } catch (err) {
-        console.error('Error fetching live users during login:', err);
-      }
-    }
 
     setIsLoading(false);
 

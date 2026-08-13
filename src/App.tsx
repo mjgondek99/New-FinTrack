@@ -132,10 +132,11 @@ export default function App() {
   });
 
   const isInitialLoaded = useRef(false);
+  const isSyncingFromServer = useRef(false);
 
   // Sync helper
   const syncToServer = (key: string, value: any) => {
-    if (!isInitialLoaded.current) return;
+    if (!isInitialLoaded.current || isSyncingFromServer.current) return;
     fetch('/api/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -143,14 +144,19 @@ export default function App() {
     }).catch(() => {});
   };
 
-  // Fetch initial data from SQLite server API if available
-  useEffect(() => {
-    fetch('/api/data', { cache: 'no-store' })
+  const fetchData = () => {
+    return fetch('/api/data', { cache: 'no-store' })
       .then((res) => res.json())
       .then((res) => {
         if (res.status === 'ok' && res.data) {
+          isSyncingFromServer.current = true;
+
           if (res.data.users && Array.isArray(res.data.users) && res.data.users.length > 0) {
             setUserAccounts(res.data.users);
+            setCurrentUser((prev) => {
+              const matched = res.data.users.find((u: UserAccount) => u.id === prev.id);
+              return matched || prev;
+            });
           }
           if (res.data.transactions && Array.isArray(res.data.transactions)) setTransactions(res.data.transactions);
           if (res.data.kasbons && Array.isArray(res.data.kasbons)) setKasbons(res.data.kasbons);
@@ -159,6 +165,10 @@ export default function App() {
           if (res.data.platforms && Array.isArray(res.data.platforms)) setPlatforms(res.data.platforms);
           if (res.data.jenis && Array.isArray(res.data.jenis)) setJenisList(res.data.jenis);
           if (res.data.saldoAwalMap && typeof res.data.saldoAwalMap === 'object') setSaldoAwalMap(res.data.saldoAwalMap);
+
+          setTimeout(() => {
+            isSyncingFromServer.current = false;
+          }, 150);
         }
       })
       .catch(() => {
@@ -167,6 +177,28 @@ export default function App() {
       .finally(() => {
         isInitialLoaded.current = true;
       });
+  };
+
+  // Fetch initial data & auto-poll every 3 seconds for real-time sync across devices
+  useEffect(() => {
+    fetchData();
+
+    const interval = setInterval(() => {
+      fetchData();
+    }, 3000);
+
+    const handleFocus = () => {
+      fetchData();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
   }, []);
 
   // Save to localStorage and SQLite server effects
