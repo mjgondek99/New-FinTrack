@@ -65,18 +65,41 @@ async function initDatabase() {
   if (!getKv('users', null)) {
     setKv('users', DEFAULT_USERS);
   }
+  if (!getKv('platforms', null)) {
+    setKv('platforms', ['Cash / Tunai', 'BriLink', 'Dana', 'Mitra Shopee', 'QRIS', 'Transfer Bank']);
+  }
+  if (!getKv('jenis', null)) {
+    setKv('jenis', ['Transfer', 'Tarik Tunai', 'Top Up', 'Pembayaran']);
+  }
+  if (getKv('transactions', null) === null) {
+    setKv('transactions', []);
+  }
+  if (getKv('kasbons', null) === null) {
+    setKv('kasbons', []);
+  }
+  if (getKv('pengeluaran', null) === null) {
+    setKv('pengeluaran', []);
+  }
+  if (getKv('mutasis', null) === null) {
+    setKv('mutasis', []);
+  }
+  if (getKv('saldoAwalMap', null) === null) {
+    setKv('saldoAwalMap', {});
+  }
 
   saveDb();
 }
 
 function getKv(key: string, defaultValue: any) {
   try {
-    const stmt = db.prepare('SELECT value FROM kv WHERE key = :key');
-    stmt.bind({ ':key': key });
+    const stmt = db.prepare('SELECT value FROM kv WHERE key = ?');
+    stmt.bind([key]);
     if (stmt.step()) {
       const row = stmt.getAsObject();
       stmt.free();
-      return JSON.parse(row.value as string);
+      if (row.value !== undefined && row.value !== null) {
+        return JSON.parse(row.value as string);
+      }
     }
     stmt.free();
   } catch (e) {
@@ -87,12 +110,11 @@ function getKv(key: string, defaultValue: any) {
 
 function setKv(key: string, value: any) {
   try {
-    const stmt = db.prepare(`
-      INSERT INTO kv (key, value) VALUES (:key, :value)
-      ON CONFLICT(key) DO UPDATE SET value = :value;
-    `);
-    stmt.run({ ':key': key, ':value': JSON.stringify(value) });
-    stmt.free();
+    db.run(
+      `INSERT INTO kv (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value;`,
+      [key, JSON.stringify(value)]
+    );
     saveDb();
   } catch (e) {
     console.error('Error writing kv:', key, e);
