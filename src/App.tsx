@@ -215,96 +215,47 @@ export default function App() {
       .then((res) => {
         if (res.status === 'ok' && res.data) {
           // 1. Users
-          if (res.data.users && Array.isArray(res.data.users)) {
-            setUserAccounts((prevLocalUsers) => {
-              const serverUsers: UserAccount[] = res.data.users;
-              const missingOnServer = prevLocalUsers.filter(
-                (lu) => !serverUsers.some((su) => su.id === lu.id || su.username.toLowerCase() === lu.username.toLowerCase())
-              );
-              if (missingOnServer.length > 0) {
-                const merged = [...serverUsers, ...missingOnServer];
-                syncMutation('users', merged, 'fintrack_users');
-                return merged;
-              }
-              localStorage.setItem('fintrack_users', JSON.stringify(serverUsers));
-              return serverUsers;
-            });
+          if (Array.isArray(res.data.users) && res.data.users.length > 0) {
+            setUserAccounts(res.data.users);
+            localStorage.setItem('fintrack_users', JSON.stringify(res.data.users));
             setCurrentUser((prev) => {
-              const matched = res.data.users.find((u: UserAccount) => u.id === prev.id);
-              return matched || prev;
+              const matched = res.data.users.find((u: UserAccount) => u.id === prev.id || u.username.toLowerCase() === prev.username.toLowerCase());
+              return matched || res.data.users[0];
             });
           }
 
           // 2. Transactions
-          if (res.data.transactions && Array.isArray(res.data.transactions)) {
-            setTransactions((prevLocalTrxs) => {
-              const serverTrxs: TransactionItem[] = res.data.transactions;
-              const missingOnServer = prevLocalTrxs.filter(
-                (lt) => !serverTrxs.some((st) => st.id === lt.id)
-              );
-              if (missingOnServer.length > 0) {
-                const merged = [...serverTrxs, ...missingOnServer];
-                syncMutation('transactions', merged, 'fintrack_transactions');
-                return merged;
-              }
-              localStorage.setItem('fintrack_transactions', JSON.stringify(serverTrxs));
-              return serverTrxs;
-            });
+          if (Array.isArray(res.data.transactions)) {
+            setTransactions(res.data.transactions);
+            localStorage.setItem('fintrack_transactions', JSON.stringify(res.data.transactions));
           }
 
           // 3. Kasbons
-          if (res.data.kasbons && Array.isArray(res.data.kasbons)) {
-            setKasbons((prevLocal) => {
-              const serverData: KasbonItem[] = res.data.kasbons;
-              const missing = prevLocal.filter((l) => !serverData.some((s) => s.id === l.id));
-              if (missing.length > 0) {
-                const merged = [...serverData, ...missing];
-                syncMutation('kasbons', merged, 'fintrack_kasbons');
-                return merged;
-              }
-              localStorage.setItem('fintrack_kasbons', JSON.stringify(serverData));
-              return serverData;
-            });
+          if (Array.isArray(res.data.kasbons)) {
+            setKasbons(res.data.kasbons);
+            localStorage.setItem('fintrack_kasbons', JSON.stringify(res.data.kasbons));
           }
 
           // 4. Pengeluaran
-          if (res.data.pengeluaran && Array.isArray(res.data.pengeluaran)) {
-            setPengeluaranList((prevLocal) => {
-              const serverData: PengeluaranItem[] = res.data.pengeluaran;
-              const missing = prevLocal.filter((l) => !serverData.some((s) => s.id === l.id));
-              if (missing.length > 0) {
-                const merged = [...serverData, ...missing];
-                syncMutation('pengeluaran', merged, 'fintrack_pengeluaran');
-                return merged;
-              }
-              localStorage.setItem('fintrack_pengeluaran', JSON.stringify(serverData));
-              return serverData;
-            });
+          if (Array.isArray(res.data.pengeluaran)) {
+            setPengeluaranList(res.data.pengeluaran);
+            localStorage.setItem('fintrack_pengeluaran', JSON.stringify(res.data.pengeluaran));
           }
 
           // 5. Mutasis
-          if (res.data.mutasis && Array.isArray(res.data.mutasis)) {
-            setMutasis((prevLocal) => {
-              const serverData: MutasiSaldoItem[] = res.data.mutasis;
-              const missing = prevLocal.filter((l) => !serverData.some((s) => s.id === l.id));
-              if (missing.length > 0) {
-                const merged = [...serverData, ...missing];
-                syncMutation('mutasis', merged, 'fintrack_mutasis');
-                return merged;
-              }
-              localStorage.setItem('fintrack_mutasis', JSON.stringify(serverData));
-              return serverData;
-            });
+          if (Array.isArray(res.data.mutasis)) {
+            setMutasis(res.data.mutasis);
+            localStorage.setItem('fintrack_mutasis', JSON.stringify(res.data.mutasis));
           }
 
           // 6. Platforms
-          if (res.data.platforms && Array.isArray(res.data.platforms) && res.data.platforms.length > 0) {
+          if (Array.isArray(res.data.platforms) && res.data.platforms.length > 0) {
             setPlatforms(res.data.platforms);
             localStorage.setItem('fintrack_platforms', JSON.stringify(res.data.platforms));
           }
 
           // 7. Jenis
-          if (res.data.jenis && Array.isArray(res.data.jenis) && res.data.jenis.length > 0) {
+          if (Array.isArray(res.data.jenis) && res.data.jenis.length > 0) {
             setJenisList(res.data.jenis);
             localStorage.setItem('fintrack_jenis', JSON.stringify(res.data.jenis));
           }
@@ -321,8 +272,34 @@ export default function App() {
       });
   };
 
-  // Fetch initial data & auto-poll every 3 seconds for real-time sync across devices
+  // On mount: One-time seed for existing device data to server + initial fetch + auto-poll
   useEffect(() => {
+    const isSeeded = localStorage.getItem('fintrack_seeded_v1');
+    if (!isSeeded) {
+      const existingTrxs = localStorage.getItem('fintrack_transactions');
+      const existingUsers = localStorage.getItem('fintrack_users');
+      const existingKasbons = localStorage.getItem('fintrack_kasbons');
+      const existingPengeluaran = localStorage.getItem('fintrack_pengeluaran');
+      const existingMutasis = localStorage.getItem('fintrack_mutasis');
+
+      if (existingTrxs) {
+        try { syncMutation('transactions', JSON.parse(existingTrxs), 'fintrack_transactions'); } catch (e) {}
+      }
+      if (existingUsers) {
+        try { syncMutation('users', JSON.parse(existingUsers), 'fintrack_users'); } catch (e) {}
+      }
+      if (existingKasbons) {
+        try { syncMutation('kasbons', JSON.parse(existingKasbons), 'fintrack_kasbons'); } catch (e) {}
+      }
+      if (existingPengeluaran) {
+        try { syncMutation('pengeluaran', JSON.parse(existingPengeluaran), 'fintrack_pengeluaran'); } catch (e) {}
+      }
+      if (existingMutasis) {
+        try { syncMutation('mutasis', JSON.parse(existingMutasis), 'fintrack_mutasis'); } catch (e) {}
+      }
+      localStorage.setItem('fintrack_seeded_v1', 'true');
+    }
+
     fetchData();
 
     const interval = setInterval(() => {

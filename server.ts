@@ -6,6 +6,7 @@ import { createServer as createViteServer } from 'vite';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 const DB_FILE = path.join(process.cwd(), 'fintrack.db');
+const JSON_STORE_FILE = path.join(process.cwd(), 'fintrack_store.json');
 
 const DEFAULT_USERS = [
   {
@@ -26,41 +27,70 @@ const DEFAULT_USERS = [
   }
 ];
 
-let db: Database;
+let db: Database | null = null;
+let memoryStore: Record<string, any> = {};
+
+function loadJsonStore() {
+  try {
+    if (fs.existsSync(JSON_STORE_FILE)) {
+      const raw = fs.readFileSync(JSON_STORE_FILE, 'utf-8');
+      memoryStore = JSON.parse(raw);
+    }
+  } catch (e) {
+    console.error('Error loading JSON store:', e);
+  }
+}
+
+function saveJsonStore() {
+  try {
+    fs.writeFileSync(JSON_STORE_FILE, JSON.stringify(memoryStore, null, 2), 'utf-8');
+  } catch (e) {
+    console.error('Error saving JSON store:', e);
+  }
+}
 
 function saveDb() {
   if (db) {
-    const data = db.export();
-    const buffer = Buffer.from(data);
-    fs.writeFileSync(DB_FILE, buffer);
+    try {
+      const data = db.export();
+      const buffer = Buffer.from(data);
+      fs.writeFileSync(DB_FILE, buffer);
+    } catch (e) {
+      console.error('Error exporting SQLite db:', e);
+    }
   }
 }
 
 async function initDatabase() {
-  const wasmPath = path.join(process.cwd(), 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm');
-  const SQL = await initSqlJs({
-    locateFile: (file) => {
-      if (file.endsWith('.wasm') && fs.existsSync(wasmPath)) {
-        return wasmPath;
+  loadJsonStore();
+
+  try {
+    const wasmPath = path.join(process.cwd(), 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm');
+    const SQL = await initSqlJs({
+      locateFile: (file) => {
+        if (file.endsWith('.wasm') && fs.existsSync(wasmPath)) {
+          return wasmPath;
+        }
+        return file;
       }
-      return file;
+    });
+
+    if (fs.existsSync(DB_FILE)) {
+      const fileBuffer = fs.readFileSync(DB_FILE);
+      db = new SQL.Database(fileBuffer);
+    } else {
+      db = new SQL.Database();
     }
-  });
 
-  if (fs.existsSync(DB_FILE)) {
-    const fileBuffer = fs.readFileSync(DB_FILE);
-    db = new SQL.Database(fileBuffer);
-  } else {
-    db = new SQL.Database();
+    db.run(`
+      CREATE TABLE IF NOT EXISTS kv (
+        key TEXT PRIMARY KEY,
+        value TEXT
+      );
+    `);
+  } catch (e) {
+    console.error('SQLite init skipped/failed, falling back to JSON store:', e);
   }
-
-  // Create key-value table for flexible JSON persistence if needed, and specialized tables
-  db.run(`
-    CREATE TABLE IF NOT EXISTS kv (
-      key TEXT PRIMARY KEY,
-      value TEXT
-    );
-  `);
 
   if (!getKv('users', null)) {
     setKv('users', DEFAULT_USERS);
@@ -91,30 +121,41 @@ async function initDatabase() {
 }
 
 function getKv(key: string, defaultValue: any) {
-  try {
-    const stmt = db.prepare('SELECT value FROM kv WHERE key = ?');
-    stmt.bind([key]);
-    let result = defaultValue;
-    if (stmt.step()) {
-      const row = stmt.getAsObject();
-      if (row.value !== undefined && row.value !== null) {
-        result = JSON.parse(row.value as string);
-      }
-    }
-    stmt.free();
-    return result;
-  } catch (e) {
-    console.error('Error reading kv for key:', key, e);
-    return defaultValue;
+  if (memoryStore[key] !== undefined && memoryStore[key] !== null) {
+    return memoryStore[key];
   }
+  if (db) {
+    try {
+      const stmt = db.prepare('SELECT value FROM kv WHERE key = ?');
+      stmt.bind([key]);
+      if (stmt.step()) {
+        const row = stmt.getAsObject();
+        stmt.free();
+        if (row.value !== undefined && row.value !== null) {
+          const val = JSON.parse(row.value as string);
+          memoryStore[key] = val;
+          return val;
+        }
+      } else {
+        stmt.free();
+      }
+    } catch (e) {
+      console.error('Error reading kv for key from SQLite:', key, e);
+    }
+  }
+  return defaultValue;
 }
 
 function setKv(key: string, value: any) {
-  try {
-    db.run('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)', [key, JSON.stringify(value)]);
-    saveDb();
-  } catch (e) {
-    console.error('Error writing kv for key:', key, e);
+  memoryStore[key] = value;
+  saveJsonStore();
+  if (db) {
+    try {
+      db.run('INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)', [key, JSON.stringify(value)]);
+      saveDb();
+    } catch (e) {
+      console.error('Error writing kv for key to SQLite:', key, e);
+    }
   }
 }
 
