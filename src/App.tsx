@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { NavTab, UserAccount, TransactionItem, KasbonItem, PengeluaranItem, MutasiSaldoItem } from './types';
 import {
   INITIAL_TRANSACTIONS,
@@ -131,17 +131,82 @@ export default function App() {
     return {};
   });
 
-  const isInitialLoaded = useRef(false);
-  const isSyncingFromServer = useRef(false);
-
-  // Sync helper
-  const syncToServer = (key: string, value: any) => {
-    if (!isInitialLoaded.current || isSyncingFromServer.current) return;
+  // Helper function to sync user action mutations to server and localStorage
+  const syncMutation = (key: string, value: any, localStorageKey: string) => {
+    try {
+      localStorage.setItem(localStorageKey, JSON.stringify(value));
+    } catch (e) {
+      console.error(`localStorage save error for ${key}:`, e);
+    }
     fetch('/api/sync', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key, value }),
-    }).catch(() => {});
+    }).catch((err) => console.error(`Sync mutation error for ${key}:`, err));
+  };
+
+  const updateUsers = (updater: React.SetStateAction<UserAccount[]>) => {
+    setUserAccounts((prev) => {
+      const next = typeof updater === 'function' ? (updater as (p: UserAccount[]) => UserAccount[])(prev) : updater;
+      syncMutation('users', next, 'fintrack_users');
+      return next;
+    });
+  };
+
+  const updateTransactions = (updater: React.SetStateAction<TransactionItem[]>) => {
+    setTransactions((prev) => {
+      const next = typeof updater === 'function' ? (updater as (p: TransactionItem[]) => TransactionItem[])(prev) : updater;
+      syncMutation('transactions', next, 'fintrack_transactions');
+      return next;
+    });
+  };
+
+  const updateKasbons = (updater: React.SetStateAction<KasbonItem[]>) => {
+    setKasbons((prev) => {
+      const next = typeof updater === 'function' ? (updater as (p: KasbonItem[]) => KasbonItem[])(prev) : updater;
+      syncMutation('kasbons', next, 'fintrack_kasbons');
+      return next;
+    });
+  };
+
+  const updatePengeluaran = (updater: React.SetStateAction<PengeluaranItem[]>) => {
+    setPengeluaranList((prev) => {
+      const next = typeof updater === 'function' ? (updater as (p: PengeluaranItem[]) => PengeluaranItem[])(prev) : updater;
+      syncMutation('pengeluaran', next, 'fintrack_pengeluaran');
+      return next;
+    });
+  };
+
+  const updateMutasis = (updater: React.SetStateAction<MutasiSaldoItem[]>) => {
+    setMutasis((prev) => {
+      const next = typeof updater === 'function' ? (updater as (p: MutasiSaldoItem[]) => MutasiSaldoItem[])(prev) : updater;
+      syncMutation('mutasis', next, 'fintrack_mutasis');
+      return next;
+    });
+  };
+
+  const updatePlatforms = (updater: React.SetStateAction<string[]>) => {
+    setPlatforms((prev) => {
+      const next = typeof updater === 'function' ? (updater as (p: string[]) => string[])(prev) : updater;
+      syncMutation('platforms', next, 'fintrack_platforms');
+      return next;
+    });
+  };
+
+  const updateJenisList = (updater: React.SetStateAction<string[]>) => {
+    setJenisList((prev) => {
+      const next = typeof updater === 'function' ? (updater as (p: string[]) => string[])(prev) : updater;
+      syncMutation('jenis', next, 'fintrack_jenis');
+      return next;
+    });
+  };
+
+  const updateSaldoAwalMap = (updater: React.SetStateAction<Record<string, number>>) => {
+    setSaldoAwalMap((prev) => {
+      const next = typeof updater === 'function' ? (updater as (p: Record<string, number>) => Record<string, number>)(prev) : updater;
+      syncMutation('saldoAwalMap', next, 'fintrack_saldo_awal');
+      return next;
+    });
   };
 
   const fetchData = () => {
@@ -149,34 +214,46 @@ export default function App() {
       .then((res) => res.json())
       .then((res) => {
         if (res.status === 'ok' && res.data) {
-          isSyncingFromServer.current = true;
-
           if (res.data.users && Array.isArray(res.data.users) && res.data.users.length > 0) {
             setUserAccounts(res.data.users);
+            localStorage.setItem('fintrack_users', JSON.stringify(res.data.users));
             setCurrentUser((prev) => {
               const matched = res.data.users.find((u: UserAccount) => u.id === prev.id);
               return matched || prev;
             });
           }
-          if (res.data.transactions && Array.isArray(res.data.transactions)) setTransactions(res.data.transactions);
-          if (res.data.kasbons && Array.isArray(res.data.kasbons)) setKasbons(res.data.kasbons);
-          if (res.data.pengeluaran && Array.isArray(res.data.pengeluaran)) setPengeluaranList(res.data.pengeluaran);
-          if (res.data.mutasis && Array.isArray(res.data.mutasis)) setMutasis(res.data.mutasis);
-          if (res.data.platforms && Array.isArray(res.data.platforms)) setPlatforms(res.data.platforms);
-          if (res.data.jenis && Array.isArray(res.data.jenis)) setJenisList(res.data.jenis);
-          if (res.data.saldoAwalMap && typeof res.data.saldoAwalMap === 'object') setSaldoAwalMap(res.data.saldoAwalMap);
-
-          setTimeout(() => {
-            isSyncingFromServer.current = false;
-          }, 150);
+          if (res.data.transactions && Array.isArray(res.data.transactions)) {
+            setTransactions(res.data.transactions);
+            localStorage.setItem('fintrack_transactions', JSON.stringify(res.data.transactions));
+          }
+          if (res.data.kasbons && Array.isArray(res.data.kasbons)) {
+            setKasbons(res.data.kasbons);
+            localStorage.setItem('fintrack_kasbons', JSON.stringify(res.data.kasbons));
+          }
+          if (res.data.pengeluaran && Array.isArray(res.data.pengeluaran)) {
+            setPengeluaranList(res.data.pengeluaran);
+            localStorage.setItem('fintrack_pengeluaran', JSON.stringify(res.data.pengeluaran));
+          }
+          if (res.data.mutasis && Array.isArray(res.data.mutasis)) {
+            setMutasis(res.data.mutasis);
+            localStorage.setItem('fintrack_mutasis', JSON.stringify(res.data.mutasis));
+          }
+          if (res.data.platforms && Array.isArray(res.data.platforms)) {
+            setPlatforms(res.data.platforms);
+            localStorage.setItem('fintrack_platforms', JSON.stringify(res.data.platforms));
+          }
+          if (res.data.jenis && Array.isArray(res.data.jenis)) {
+            setJenisList(res.data.jenis);
+            localStorage.setItem('fintrack_jenis', JSON.stringify(res.data.jenis));
+          }
+          if (res.data.saldoAwalMap && typeof res.data.saldoAwalMap === 'object') {
+            setSaldoAwalMap(res.data.saldoAwalMap);
+            localStorage.setItem('fintrack_saldo_awal', JSON.stringify(res.data.saldoAwalMap));
+          }
         }
       })
-      .catch(() => {
-        // Static or offline mode
-      })
-      .finally(() => {
-        isInitialLoaded.current = true;
-      });
+      .catch(() => {})
+      .finally(() => {});
   };
 
   // Fetch initial data & auto-poll every 3 seconds for real-time sync across devices
@@ -201,12 +278,7 @@ export default function App() {
     };
   }, []);
 
-  // Save to localStorage and SQLite server effects
-  useEffect(() => {
-    localStorage.setItem('fintrack_users', JSON.stringify(userAccounts));
-    syncToServer('users', userAccounts);
-  }, [userAccounts]);
-
+  // Save session state to localStorage
   useEffect(() => {
     localStorage.setItem('fintrack_current_user', JSON.stringify(currentUser));
   }, [currentUser]);
@@ -214,41 +286,6 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('fintrack_is_logged_in', String(isLoggedIn));
   }, [isLoggedIn]);
-
-  useEffect(() => {
-    localStorage.setItem('fintrack_transactions', JSON.stringify(transactions));
-    syncToServer('transactions', transactions);
-  }, [transactions]);
-
-  useEffect(() => {
-    localStorage.setItem('fintrack_kasbons', JSON.stringify(kasbons));
-    syncToServer('kasbons', kasbons);
-  }, [kasbons]);
-
-  useEffect(() => {
-    localStorage.setItem('fintrack_pengeluaran', JSON.stringify(pengeluaranList));
-    syncToServer('pengeluaran', pengeluaranList);
-  }, [pengeluaranList]);
-
-  useEffect(() => {
-    localStorage.setItem('fintrack_mutasis', JSON.stringify(mutasis));
-    syncToServer('mutasis', mutasis);
-  }, [mutasis]);
-
-  useEffect(() => {
-    localStorage.setItem('fintrack_platforms', JSON.stringify(platforms));
-    syncToServer('platforms', platforms);
-  }, [platforms]);
-
-  useEffect(() => {
-    localStorage.setItem('fintrack_jenis', JSON.stringify(jenisList));
-    syncToServer('jenis', jenisList);
-  }, [jenisList]);
-
-  useEffect(() => {
-    localStorage.setItem('fintrack_saldo_awal', JSON.stringify(saldoAwalMap));
-    syncToServer('saldoAwalMap', saldoAwalMap);
-  }, [saldoAwalMap]);
 
   const allowedKasirTabs: NavTab[] = ['transaksi', 'pengeluaran', 'saldo', 'pengaturan', 'akun'];
 
@@ -282,18 +319,18 @@ export default function App() {
   };
 
   const handleUpdateUserAccount = (updated: UserAccount) => {
-    setUserAccounts(userAccounts.map((u) => (u.id === updated.id ? updated : u)));
+    updateUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
     if (currentUser.id === updated.id) {
       setCurrentUser(updated);
     }
   };
 
   const handleAddUserAccount = (newAcc: UserAccount) => {
-    setUserAccounts([...userAccounts, newAcc]);
+    updateUsers((prev) => [...prev, newAcc]);
   };
 
   const handleDeleteUserAccount = (accId: string) => {
-    setUserAccounts(userAccounts.filter((u) => u.id !== accId));
+    updateUsers((prev) => prev.filter((u) => u.id !== accId));
   };
 
   if (!isLoggedIn) {
@@ -358,7 +395,7 @@ export default function App() {
           {activeTab === 'transaksi' && (
             <TransaksiView
               transactions={transactions}
-              setTransactions={setTransactions}
+              setTransactions={updateTransactions}
               onOpenCetakStruk={() => setIsCetakStrukOpen(true)}
               platforms={platforms}
               jenisList={jenisList}
@@ -380,7 +417,7 @@ export default function App() {
           {activeTab === 'kasbon' && currentUser.role === 'admin' && (
             <KasbonView
               kasbons={kasbons}
-              setKasbons={setKasbons}
+              setKasbons={updateKasbons}
               onNavigateToExport={() => setActiveTab('export_laporan')}
             />
           )}
@@ -388,7 +425,7 @@ export default function App() {
           {activeTab === 'pengeluaran' && (
             <PengeluaranView
               pengeluaranList={pengeluaranList}
-              setPengeluaranList={setPengeluaranList}
+              setPengeluaranList={updatePengeluaran}
               onNavigateToExport={() => setActiveTab('export_laporan')}
               platforms={platforms}
             />
@@ -397,10 +434,10 @@ export default function App() {
           {activeTab === 'saldo' && (
             <SaldoView
               mutasis={mutasis}
-              setMutasis={setMutasis}
+              setMutasis={updateMutasis}
               platforms={platforms}
               saldoAwalMap={saldoAwalMap}
-              setSaldoAwalMap={setSaldoAwalMap}
+              setSaldoAwalMap={updateSaldoAwalMap}
               onNavigateToExport={() => setActiveTab('export_laporan')}
               currentUser={currentUser}
               transactions={transactions}
@@ -411,9 +448,9 @@ export default function App() {
           {activeTab === 'platform_jenis' && currentUser.role === 'admin' && (
             <PlatformJenisView
               platforms={platforms}
-              setPlatforms={setPlatforms}
+              setPlatforms={updatePlatforms}
               jenisList={jenisList}
-              setJenisList={setJenisList}
+              setJenisList={updateJenisList}
               transactions={transactions}
             />
           )}
