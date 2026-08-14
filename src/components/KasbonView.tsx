@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { KasbonItem, RiwayatCicilanItem } from '../types';
 import { formatThousand, parseThousand } from '../utils/formatters';
+import { sortByDateDesc } from '../utils/dateSorter';
 
 interface KasbonViewProps {
   kasbons: KasbonItem[];
@@ -234,11 +235,13 @@ export const KasbonView: React.FC<KasbonViewProps> = ({
   const totalSisaPiutang = kasbons.reduce((acc, curr) => acc + curr.sisaKasbon, 0);
   const totalTerbayar = totalKasbonSemua - totalSisaPiutang;
 
-  const filtered = kasbons.filter((k) => {
-    const matchSearch = k.namaPelanggan.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = filterStatus === 'Semua' || k.status === filterStatus;
-    return matchSearch && matchStatus;
-  });
+  const filtered = sortByDateDesc(
+    kasbons.filter((k) => {
+      const matchSearch = k.namaPelanggan.toLowerCase().includes(search.toLowerCase());
+      const matchStatus = filterStatus === 'Semua' || k.status === filterStatus;
+      return matchSearch && matchStatus;
+    })
+  );
 
   const handleOpenPayModal = (kasbon: KasbonItem) => {
     const freshNow = new Date();

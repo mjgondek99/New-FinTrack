@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { PengeluaranItem } from '../types';
 import { formatThousand, parseThousand } from '../utils/formatters';
+import { sortByDateDesc } from '../utils/dateSorter';
 
 interface PengeluaranViewProps {
   pengeluaranList: PengeluaranItem[];
@@ -98,6 +99,7 @@ export const PengeluaranView: React.FC<PengeluaranViewProps> = ({
   };
 
   const totalExpense = pengeluaranList.reduce((acc, curr) => acc + curr.jumlah, 0);
+  const sortedPengeluaran = sortByDateDesc(pengeluaranList);
 
   return (
     <div className="max-w-[1280px] mx-auto space-y-4 sm:space-y-6 w-full max-w-full">
@@ -166,14 +168,14 @@ export const PengeluaranView: React.FC<PengeluaranViewProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-[#c6c6cd]/40">
-            {pengeluaranList.length === 0 ? (
+            {sortedPengeluaran.length === 0 ? (
               <tr>
                 <td colSpan={7} className="p-8 text-center text-gray-500">
                   Belum ada catatan pengeluaran toko.
                 </td>
               </tr>
             ) : (
-              pengeluaranList.map((p) => {
+              sortedPengeluaran.map((p) => {
                 const sDana = p.sumberDana || 'Cash / Tunai';
                 const isCash = sDana.toLowerCase().includes('cash') || sDana.toLowerCase().includes('tunai');
                 return (

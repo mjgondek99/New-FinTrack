@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { MutasiSaldoItem, UserAccount, TransactionItem, PengeluaranItem } from '../types';
 import { formatThousand, parseThousand } from '../utils/formatters';
+import { sortByDateDesc } from '../utils/dateSorter';
+import { isDanaPlatform, calculateDanaMonthlyQuota, DANA_MONTHLY_LIMIT } from '../utils/danaLimit';
 
 interface SaldoViewProps {
   mutasis: MutasiSaldoItem[];
@@ -357,18 +359,31 @@ export const SaldoView: React.FC<SaldoViewProps> = ({
     }
   };
 
-  // Filtered Mutasi List
-  const filteredMutasis = mutasis.filter((m) => {
-    const matchSearch =
-      m.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      m.sumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (m.platform && m.platform.toLowerCase().includes(searchTerm.toLowerCase()));
-    const matchPlatform =
-      platformFilter === 'Semua' ||
-      m.platform === platformFilter ||
-      m.sumber.toLowerCase().includes(platformFilter.toLowerCase());
-    return matchSearch && matchPlatform;
-  });
+  // Calculate Grand Totals:
+  // 1. Total Saldo Digital: sum of all non-cash platforms
+  // 2. Total Saldo Cash: cash / tunai platform
+  // 3. Total Saldo + Cash: grand total
+  const nonCashPlatforms = platforms.filter((p) => !isCashPlatform(p));
+  const cashPlatforms = platforms.filter((p) => isCashPlatform(p));
+
+  const totalSaldoDigital = nonCashPlatforms.reduce((sum, p) => sum + getPlatformDetails(p).totalBalance, 0);
+  const totalSaldoCash = cashPlatforms.reduce((sum, p) => sum + getPlatformDetails(p).totalBalance, 0);
+  const totalSaldoPlusCash = totalSaldoDigital + totalSaldoCash;
+
+  // Filtered Mutasi List (Sorted by date and time newest first)
+  const filteredMutasis = sortByDateDesc(
+    mutasis.filter((m) => {
+      const matchSearch =
+        m.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        m.sumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (m.platform && m.platform.toLowerCase().includes(searchTerm.toLowerCase()));
+      const matchPlatform =
+        platformFilter === 'Semua' ||
+        m.platform === platformFilter ||
+        m.sumber.toLowerCase().includes(platformFilter.toLowerCase());
+      return matchSearch && matchPlatform;
+    })
+  );
 
   const getPlatformBadgeColor = (p: string) => {
     const lower = p.toLowerCase();
@@ -437,6 +452,90 @@ export const SaldoView: React.FC<SaldoViewProps> = ({
             <span className="material-symbols-outlined text-[18px]">ios_share</span>
             Export
           </button>
+        </div>
+      </div>
+
+      {/* Summary Metrics: Total Saldo Digital (Kecuali Cash) & Total Saldo + Cash */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Card 1: Total Saldo Digital (Semua Platform Kecuali Cash) */}
+        <div className="bg-gradient-to-br from-[#004d34] to-[#006c49] text-white p-5 rounded-2xl shadow-sm relative overflow-hidden flex flex-col justify-between">
+          <div className="flex justify-between items-start">
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-200 block">
+                Total Saldo Digital (Non-Cash)
+              </span>
+              <p className="text-[11px] text-emerald-100/90 mt-0.5">
+                Akumulasi seluruh platform provider (kecuali Cash)
+              </p>
+            </div>
+            <div className="p-2 bg-white/15 rounded-xl backdrop-blur-xs">
+              <span className="material-symbols-outlined text-xl text-white">account_balance_wallet</span>
+            </div>
+          </div>
+          <div className="mt-4">
+            <div className="text-2xl sm:text-3xl font-bold font-mono-jetbrains tracking-tight">
+              Rp {totalSaldoDigital.toLocaleString('id-ID')}
+            </div>
+            <div className="flex flex-wrap gap-1.5 mt-2.5 pt-2.5 border-t border-white/15 text-[10px]">
+              {nonCashPlatforms.map((p) => (
+                <span key={p} className="bg-white/20 px-2 py-0.5 rounded-md font-semibold text-emerald-50">
+                  {p}: Rp {getPlatformDetails(p).totalBalance.toLocaleString('id-ID')}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Card 2: Total Saldo Kas Fisik (Cash / Tunai) */}
+        <div className="bg-white p-5 rounded-2xl border border-[#c6c6cd] shadow-xs flex flex-col justify-between">
+          <div className="flex justify-between items-start">
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[#45464d] block">
+                Saldo Kas Fisik (Tunai)
+              </span>
+              <p className="text-[11px] text-gray-500 mt-0.5">
+                Uang tunai fisik yang ada di laci kasir agen
+              </p>
+            </div>
+            <div className="p-2 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-200">
+              <span className="material-symbols-outlined text-xl">payments</span>
+            </div>
+          </div>
+          <div className="mt-4">
+            <div className="text-2xl sm:text-3xl font-bold font-mono-jetbrains text-emerald-700 tracking-tight">
+              Rp {totalSaldoCash.toLocaleString('id-ID')}
+            </div>
+            <div className="text-[11px] text-[#45464d] mt-2.5 pt-2.5 border-t border-gray-100 flex items-center justify-between">
+              <span>Status Likuiditas Tunai</span>
+              <span className="font-bold text-emerald-700">Tersedia di Kasir</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 3: Total Saldo + Cash (Grand Total Modal Kasir) */}
+        <div className="bg-gradient-to-br from-[#0b1c30] to-[#1e3a5f] text-white p-5 rounded-2xl shadow-sm relative overflow-hidden flex flex-col justify-between">
+          <div className="flex justify-between items-start">
+            <div>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-sky-200 block">
+                Total Saldo + Cash (Keseluruhan)
+              </span>
+              <p className="text-[11px] text-sky-100/90 mt-0.5">
+                Total modal kerja berputar (Digital + Kas Fisik)
+              </p>
+            </div>
+            <div className="p-2 bg-white/15 rounded-xl backdrop-blur-xs">
+              <span className="material-symbols-outlined text-xl text-white">savings</span>
+            </div>
+          </div>
+          <div className="mt-4">
+            <div className="text-2xl sm:text-3xl font-bold font-mono-jetbrains text-amber-300 tracking-tight">
+              Rp {totalSaldoPlusCash.toLocaleString('id-ID')}
+            </div>
+            <div className="text-[11px] text-sky-100/90 mt-2.5 pt-2.5 border-t border-white/15 flex items-center justify-between">
+              <span>Digital: Rp {totalSaldoDigital.toLocaleString('id-ID')}</span>
+              <span>+ Cash: Rp {totalSaldoCash.toLocaleString('id-ID')}</span>
+            </div>
+          </div>
         </div>
       </div>
 

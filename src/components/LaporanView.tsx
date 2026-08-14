@@ -8,6 +8,7 @@ interface LaporanViewProps {
   pengeluaranList: PengeluaranItem[];
   mutasis: MutasiSaldoItem[];
   platforms?: string[];
+  saldoAwalMap?: Record<string, number>;
   onNavigateToExport?: () => void;
 }
 
@@ -16,11 +17,92 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
   kasbons,
   pengeluaranList,
   mutasis,
-  platforms = ['BriLink', 'Dana', 'Mitra Shopee', 'QRIS', 'Transfer Bank'],
+  platforms = ['Cash / Tunai', 'BriLink', 'Dana', 'Mitra Shopee', 'QRIS'],
+  saldoAwalMap = {},
   onNavigateToExport
 }) => {
   // Periode Filter
   const [periodeFilter, setPeriodeFilter] = useState<'semua' | 'hari_ini' | 'bulan_ini'>('semua');
+
+  // Helper to identify Cash platform
+  const isCashPlatform = (name: string) => {
+    const lower = name.toLowerCase();
+    return lower.includes('cash') || lower.includes('tunai');
+  };
+
+  // Calculate current balance for a platform (including transactions & pengeluaran)
+  const getPlatformCurrentBalance = (platformName: string) => {
+    const awal = saldoAwalMap[platformName] || 0;
+    const mutasiForPlatform = mutasis.filter((m) => {
+      if (m.platform) {
+        return m.platform.toLowerCase() === platformName.toLowerCase();
+      }
+      return m.sumber.toLowerCase().includes(platformName.toLowerCase());
+    });
+    const mutasiMasuk = mutasiForPlatform
+      .filter((m) => m.jenis === 'Masuk')
+      .reduce((sum, m) => sum + m.nominal, 0);
+    const mutasiKeluar = mutasiForPlatform
+      .filter((m) => m.jenis === 'Keluar')
+      .reduce((sum, m) => sum + m.nominal, 0);
+
+    const totalPengeluaran = pengeluaranList
+      .filter((e) => {
+        const ePlatform = e.sumberDana || 'Cash / Tunai';
+        if (isCashPlatform(platformName)) {
+          return isCashPlatform(ePlatform);
+        }
+        return ePlatform.toLowerCase() === platformName.toLowerCase();
+      })
+      .reduce((sum, e) => sum + e.jumlah, 0);
+
+    if (isCashPlatform(platformName)) {
+      let cashDiterima = 0;
+      let cashDikeluarkan = 0;
+
+      transactions.forEach((t) => {
+        if (t.status === 'Berhasil' || !t.status) {
+          const adminLuar = t.biayaAdminLuar ?? t.biayaAdmin ?? 0;
+          const adminDalam = t.biayaAdminDalam ?? 0;
+          const totalTagihan = t.totalPenagihan ?? (adminLuar > 0 ? (t.jumlah + adminLuar) : (t.jumlah + adminDalam));
+
+          if (t.jenis === 'Tarik Tunai') {
+            cashDikeluarkan += t.jumlah;
+          } else {
+            cashDiterima += totalTagihan;
+          }
+        }
+      });
+
+      return awal + mutasiMasuk - mutasiKeluar + cashDiterima - cashDikeluarkan - totalPengeluaran;
+    } else {
+      let providerBerkurang = 0;
+      let providerBertambah = 0;
+
+      transactions.forEach((t) => {
+        if ((t.status === 'Berhasil' || !t.status) && t.platform === platformName) {
+          if (t.jenis === 'Tarik Tunai') {
+            providerBertambah += t.jumlah;
+          } else {
+            const adminDalam = t.biayaAdminDalam ?? 0;
+            providerBerkurang += (t.jumlah + adminDalam);
+          }
+        }
+      });
+
+      return awal + mutasiMasuk - mutasiKeluar - providerBerkurang + providerBertambah - totalPengeluaran;
+    }
+  };
+
+  // 1. Jumlah Kas Awal Bulan (Total seluruh platform provider + cash di awal bulan)
+  const kasAwalBulan = platforms.reduce((sum, p) => sum + (saldoAwalMap[p] || 0), 0);
+
+  // 2. Jumlah Kas Saat Ini (Total seluruh platform provider + cash berjalan)
+  const kasSaatIni = platforms.reduce((sum, p) => sum + getPlatformCurrentBalance(p), 0);
+
+  // 3. Perubahan Modal (Kas Saat Ini - Kas Awal)
+  const perubahanModal = kasSaatIni - kasAwalBulan;
+  const persenPerubahanModal = kasAwalBulan > 0 ? ((perubahanModal / kasAwalBulan) * 100).toFixed(1) : '0.0';
 
   // Filter transactions by date period helper
   const filterByDate = <T extends { tanggal: string }>(items: T[]) => {
@@ -156,6 +238,99 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
               Export File Excel/PDF
             </button>
           )}
+        </div>
+      </div>
+
+      {/* Rekapitulasi Modal & Arus Kas Agen (Kas Awal, Kas Saat Ini, Perubahan Modal) */}
+      <div className="bg-gradient-to-r from-[#0b1c30] via-[#132742] to-[#1e3a5f] text-white p-5 sm:p-6 rounded-2xl shadow-sm border border-sky-900/40 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-white/10 rounded-xl">
+              <span className="material-symbols-outlined text-amber-300 text-[22px]">account_balance</span>
+            </div>
+            <div>
+              <h3 className="font-bold text-base sm:text-lg text-white">Rekapitulasi Modal & Kas Agen</h3>
+              <p className="text-xs text-sky-200">Pemantauan modal kerja awal bulan vs saldo kas riil saat ini</p>
+            </div>
+          </div>
+          <span className="text-[11px] font-mono-jetbrains font-bold bg-white/10 px-3 py-1 rounded-full text-sky-100 w-fit">
+            {platforms.length} Platform Aktif (Termasuk Kas Tunai)
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
+          {/* 1. Kas Awal Bulan */}
+          <div className="bg-white/5 backdrop-blur-xs p-4 rounded-xl border border-white/10 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-sky-200">
+                  1. Kas Awal Bulan
+                </span>
+                <span className="material-symbols-outlined text-sky-300 text-[18px]">history</span>
+              </div>
+              <p className="text-[10px] text-gray-300 mt-0.5">
+                Total saldo semua platform + cash di awal bulan
+              </p>
+            </div>
+            <div className="mt-3">
+              <div className="text-xl sm:text-2xl font-bold font-mono-jetbrains text-white">
+                Rp {kasAwalBulan.toLocaleString('id-ID')}
+              </div>
+              <span className="text-[10px] text-sky-200 block mt-1">
+                Modal Awal Tercatat
+              </span>
+            </div>
+          </div>
+
+          {/* 2. Kas Saat Ini */}
+          <div className="bg-white/5 backdrop-blur-xs p-4 rounded-xl border border-white/10 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-300">
+                  2. Kas Saat Ini
+                </span>
+                <span className="material-symbols-outlined text-emerald-300 text-[18px]">wallet</span>
+              </div>
+              <p className="text-[10px] text-gray-300 mt-0.5">
+                Total saldo berjalan saat ini (E-Money + Cash)
+              </p>
+            </div>
+            <div className="mt-3">
+              <div className="text-xl sm:text-2xl font-bold font-mono-jetbrains text-emerald-300">
+                Rp {kasSaatIni.toLocaleString('id-ID')}
+              </div>
+              <span className="text-[10px] text-emerald-200 block mt-1">
+                Saldo Likuid Berputar
+              </span>
+            </div>
+          </div>
+
+          {/* 3. Perubahan Modal */}
+          <div className="bg-white/5 backdrop-blur-xs p-4 rounded-xl border border-white/10 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-amber-300">
+                  3. Perubahan Modal
+                </span>
+                <span className="material-symbols-outlined text-amber-300 text-[18px]">
+                  {perubahanModal >= 0 ? 'trending_up' : 'trending_down'}
+                </span>
+              </div>
+              <p className="text-[10px] text-gray-300 mt-0.5">
+                Selisih Kas Saat Ini vs Kas Awal Bulan
+              </p>
+            </div>
+            <div className="mt-3">
+              <div className={`text-xl sm:text-2xl font-bold font-mono-jetbrains ${perubahanModal >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
+                {perubahanModal >= 0 ? '+' : ''}Rp {perubahanModal.toLocaleString('id-ID')}
+              </div>
+              <div className="flex items-center gap-1.5 mt-1">
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${perubahanModal >= 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}`}>
+                  {perubahanModal >= 0 ? '▲ Kenaikan Modal' : '▼ Penurunan Modal'} ({persenPerubahanModal}%)
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

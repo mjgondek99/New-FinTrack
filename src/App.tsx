@@ -429,6 +429,9 @@ export default function App() {
               transactions={transactions}
               kasbons={kasbons}
               pengeluaranList={pengeluaranList}
+              mutasis={mutasis}
+              platforms={platforms}
+              saldoAwalMap={saldoAwalMap}
               onNavigateToExport={() => setActiveTab('export_laporan')}
               onOpenCetakStruk={() => setIsCetakStrukOpen(true)}
             />
@@ -452,6 +455,7 @@ export default function App() {
               pengeluaranList={pengeluaranList}
               mutasis={mutasis}
               platforms={platforms}
+              saldoAwalMap={saldoAwalMap}
               onNavigateToExport={() => setActiveTab('export_laporan')}
             />
           )}

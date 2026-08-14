@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { TransactionItem, UserAccount } from '../types';
 import { formatThousand, parseThousand, getTransactionRevenueAndProfit, calculateRevenueAndProfit } from '../utils/formatters';
+import { sortByDateDesc } from '../utils/dateSorter';
+import { isDanaPlatform, calculateDanaMonthlyQuota, DANA_MONTHLY_LIMIT } from '../utils/danaLimit';
 
 interface TransaksiViewProps {
   transactions: TransactionItem[];
@@ -119,13 +121,15 @@ export const TransaksiView: React.FC<TransaksiViewProps> = ({
     setDeletingTrx(null);
   };
 
-  const filtered = transactions.filter((t) => {
-    const matchesSearch =
-      t.pelanggan.toLowerCase().includes(search.toLowerCase()) ||
-      t.id.toLowerCase().includes(search.toLowerCase());
-    const matchesPlatform = platformFilter === 'Semua' || t.platform === platformFilter;
-    return matchesSearch && matchesPlatform;
-  });
+  const filtered = sortByDateDesc(
+    transactions.filter((t) => {
+      const matchesSearch =
+        t.pelanggan.toLowerCase().includes(search.toLowerCase()) ||
+        t.id.toLowerCase().includes(search.toLowerCase());
+      const matchesPlatform = platformFilter === 'Semua' || t.platform === platformFilter;
+      return matchesSearch && matchesPlatform;
+    })
+  );
 
   // Summary calculation for filtered view
   const summaryTotalCount = filtered.length;
