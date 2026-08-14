@@ -14,6 +14,7 @@ interface HeaderProps {
 const TAB_TITLES: Record<NavTab, string> = {
   dashboard: 'Dashboard Utama',
   transaksi: 'Daftar Transaksi Agen',
+  pelanggan: 'Manajemen Pelanggan',
   laporan: 'Laporan Keuangan',
   kasbon: 'Manajemen Kasbon Pelanggan',
   pengeluaran: 'Catatan Pengeluaran',

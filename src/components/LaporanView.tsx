@@ -22,7 +22,11 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
   onNavigateToExport
 }) => {
   // Periode Filter
-  const [periodeFilter, setPeriodeFilter] = useState<'semua' | 'hari_ini' | 'bulan_ini'>('semua');
+  const todayStr = new Date().toISOString().split('T')[0];
+  const firstDayOfMonthStr = `${todayStr.slice(0, 7)}-01`;
+  const [periodeFilter, setPeriodeFilter] = useState<'semua' | 'hari_ini' | 'bulan_ini' | 'rentang'>('semua');
+  const [startDate, setStartDate] = useState<string>(firstDayOfMonthStr);
+  const [endDate, setEndDate] = useState<string>(todayStr);
 
   // Helper to identify Cash platform
   const isCashPlatform = (name: string) => {
@@ -120,6 +124,14 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
       if (periodeFilter === 'bulan_ini') {
         return itemDate.startsWith(currentMonthStr);
       }
+      if (periodeFilter === 'rentang') {
+        if (startDate && endDate) {
+          return itemDate >= startDate && itemDate <= endDate;
+        }
+        if (startDate) return itemDate >= startDate;
+        if (endDate) return itemDate <= endDate;
+        return true;
+      }
       return true;
     });
   };
@@ -195,11 +207,12 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
         </div>
 
         <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 w-full md:w-auto">
-          {/* Filter Periode Chips */}
-          <div className="bg-[#f8f9ff] p-1 border border-[#c6c6cd] rounded-xl flex items-center justify-between sm:justify-start gap-1 w-full sm:w-auto">
+          {/* Filter Periode Bar */}
+          <div className="bg-[#f8f9ff] p-1.5 border border-[#c6c6cd] rounded-xl flex flex-wrap items-center gap-1.5 w-full md:w-auto">
             <button
+              type="button"
               onClick={() => setPeriodeFilter('semua')}
-              className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
                 periodeFilter === 'semua'
                   ? 'bg-[#006c49] text-white shadow-xs'
                   : 'text-[#45464d] hover:bg-gray-200'
@@ -208,8 +221,9 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
               Semua Data
             </button>
             <button
+              type="button"
               onClick={() => setPeriodeFilter('bulan_ini')}
-              className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
                 periodeFilter === 'bulan_ini'
                   ? 'bg-[#006c49] text-white shadow-xs'
                   : 'text-[#45464d] hover:bg-gray-200'
@@ -218,8 +232,9 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
               Bulan Ini
             </button>
             <button
+              type="button"
               onClick={() => setPeriodeFilter('hari_ini')}
-              className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
                 periodeFilter === 'hari_ini'
                   ? 'bg-[#006c49] text-white shadow-xs'
                   : 'text-[#45464d] hover:bg-gray-200'
@@ -227,6 +242,41 @@ export const LaporanView: React.FC<LaporanViewProps> = ({
             >
               Hari Ini
             </button>
+
+            {/* Pilih Rentang Tanggal (Dari s/d Sampai) */}
+            <div className={`flex flex-wrap sm:flex-nowrap items-center gap-1.5 px-2.5 py-1 rounded-lg border transition-all ${
+              periodeFilter === 'rentang'
+                ? 'bg-white border-[#006c49] ring-2 ring-[#006c49]/20 shadow-xs'
+                : 'bg-white/80 border-[#c6c6cd]'
+            }`}>
+              <div className="flex items-center gap-1">
+                <span className="text-[11px] font-semibold text-gray-500">Dari:</span>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => {
+                    setStartDate(e.target.value);
+                    setPeriodeFilter('rentang');
+                  }}
+                  className="text-xs font-bold text-black bg-transparent outline-none cursor-pointer"
+                  title="Dari Tanggal"
+                />
+              </div>
+              <span className="text-[11px] font-bold text-gray-400">s/d</span>
+              <div className="flex items-center gap-1">
+                <span className="text-[11px] font-semibold text-gray-500">Sampai:</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => {
+                    setEndDate(e.target.value);
+                    setPeriodeFilter('rentang');
+                  }}
+                  className="text-xs font-bold text-black bg-transparent outline-none cursor-pointer"
+                  title="Sampai Tanggal"
+                />
+              </div>
+            </div>
           </div>
 
           {onNavigateToExport && (

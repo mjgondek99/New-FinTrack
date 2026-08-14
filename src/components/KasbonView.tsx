@@ -1,22 +1,33 @@
 import React, { useState } from 'react';
-import { KasbonItem, RiwayatCicilanItem } from '../types';
+import { KasbonItem, RiwayatCicilanItem, Customer } from '../types';
 import { formatThousand, parseThousand } from '../utils/formatters';
 import { sortByDateDesc } from '../utils/dateSorter';
 
 interface KasbonViewProps {
   kasbons: KasbonItem[];
   setKasbons: React.Dispatch<React.SetStateAction<KasbonItem[]>>;
+  customers?: Customer[];
+  setCustomers?: React.Dispatch<React.SetStateAction<Customer[]>>;
   onNavigateToExport: () => void;
 }
 
 export const KasbonView: React.FC<KasbonViewProps> = ({
   kasbons,
   setKasbons,
+  customers = [],
+  setCustomers,
   onNavigateToExport
 }) => {
   const [filterStatus, setFilterStatus] = useState<'Semua' | 'Belum Lunas' | 'Lunas'>('Semua');
   const [search, setSearch] = useState('');
   const [showAdd, setShowAdd] = useState(false);
+
+  // Date Filter State
+  const todayStr = new Date().toISOString().split('T')[0];
+  const firstDayOfMonthStr = `${todayStr.slice(0, 7)}-01`;
+  const [dateFilterMode, setDateFilterMode] = useState<'semua' | 'hari_ini' | 'bulan_ini' | 'rentang'>('semua');
+  const [startDateFilter, setStartDateFilter] = useState<string>(firstDayOfMonthStr);
+  const [endDateFilter, setEndDateFilter] = useState<string>(todayStr);
 
   // Installment Modal State
   const [selectedKasbonForPay, setSelectedKasbonForPay] = useState<KasbonItem | null>(null);
@@ -237,9 +248,28 @@ export const KasbonView: React.FC<KasbonViewProps> = ({
 
   const filtered = sortByDateDesc(
     kasbons.filter((k) => {
-      const matchSearch = k.namaPelanggan.toLowerCase().includes(search.toLowerCase());
+      const matchSearch =
+        k.namaPelanggan.toLowerCase().includes(search.toLowerCase()) ||
+        k.id.toLowerCase().includes(search.toLowerCase());
       const matchStatus = filterStatus === 'Semua' || k.status === filterStatus;
-      return matchSearch && matchStatus;
+
+      const itemDate = k.tanggal.split(' ')[0];
+      let matchDate = true;
+      if (dateFilterMode === 'hari_ini') {
+        matchDate = itemDate === todayStr;
+      } else if (dateFilterMode === 'bulan_ini') {
+        matchDate = itemDate.startsWith(todayStr.slice(0, 7));
+      } else if (dateFilterMode === 'rentang') {
+        if (startDateFilter && endDateFilter) {
+          matchDate = itemDate >= startDateFilter && itemDate <= endDateFilter;
+        } else if (startDateFilter) {
+          matchDate = itemDate >= startDateFilter;
+        } else if (endDateFilter) {
+          matchDate = itemDate <= endDateFilter;
+        }
+      }
+
+      return matchSearch && matchStatus && matchDate;
     })
   );
 
@@ -310,7 +340,10 @@ export const KasbonView: React.FC<KasbonViewProps> = ({
 
   const handleAddKasbon = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nama.trim()) return;
+    if (!nama.trim()) {
+      alert('Nama pelanggan wajib diisi atau dipilih dari daftar pelanggan!');
+      return;
+    }
 
     const numericNominal = parseThousand(nominalStr);
     if (numericNominal <= 0) {
@@ -318,15 +351,32 @@ export const KasbonView: React.FC<KasbonViewProps> = ({
       return;
     }
 
+    // Check if new customer should be added to customer list
+    if (setCustomers && customers) {
+      const exists = customers.some(
+        (c) => c.nama.toLowerCase().trim() === nama.toLowerCase().trim()
+      );
+      if (!exists && nama.trim()) {
+        const newCust: Customer = {
+          id: `CUST-${Date.now()}`,
+          nama: nama.trim(),
+          noHp: hp.trim() || '-',
+          catatan: 'Dibuat otomatis dari pencatatan kasbon',
+          createdAt: new Date().toISOString()
+        };
+        setCustomers([newCust, ...customers]);
+      }
+    }
+
     const newK: KasbonItem = {
       id: `KSB-00${kasbons.length + 1}`,
-      namaPelanggan: nama,
-      noHp: hp || '081234567890',
+      namaPelanggan: nama.trim(),
+      noHp: hp.trim() || '081234567890',
       tanggal: new Date().toISOString().slice(0, 10),
       totalKasbon: numericNominal,
       sisaKasbon: numericNominal,
       status: 'Belum Lunas',
-      catatan: catatan || 'Kasbon transaksi',
+      catatan: catatan.trim() || 'Kasbon transaksi',
       riwayatPembayaran: []
     };
 
@@ -336,6 +386,15 @@ export const KasbonView: React.FC<KasbonViewProps> = ({
     setHp('');
     setNominalStr('100.000');
     setCatatan('');
+    showToast(`✅ Kasbon Rp ${numericNominal.toLocaleString('id-ID')} untuk ${nama.trim()} berhasil ditambahkan.`);
+  };
+
+  const handleSelectExistingCustomer = (custName: string) => {
+    setNama(custName);
+    const matched = customers.find((c) => c.nama.toLowerCase() === custName.toLowerCase());
+    if (matched && matched.noHp) {
+      setHp(matched.noHp);
+    }
   };
 
   return (
@@ -415,59 +474,142 @@ export const KasbonView: React.FC<KasbonViewProps> = ({
       </div>
 
       {/* Filters - Stacked on Mobile */}
-      <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-[#c6c6cd] shadow-xs flex flex-col sm:flex-row gap-3 sm:gap-4 justify-between items-stretch sm:items-center w-full">
-        <div className="relative w-full sm:w-80">
-          <input
-            type="text"
-            placeholder="Cari nama pelanggan kasbon..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 border border-[#c6c6cd] rounded-lg text-sm bg-white"
-          />
-          <span className="material-symbols-outlined absolute left-2.5 top-2.5 text-gray-400 text-[18px]">
-            search
-          </span>
+      <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-[#c6c6cd] shadow-xs flex flex-col gap-3 w-full">
+        <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center w-full">
+          <div className="relative w-full sm:w-80">
+            <input
+              type="text"
+              placeholder="Cari ID / nama pelanggan kasbon..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 border border-[#c6c6cd] rounded-lg text-sm bg-white"
+            />
+            <span className="material-symbols-outlined absolute left-2.5 top-2.5 text-gray-400 text-[18px]">
+              search
+            </span>
+          </div>
+
+          <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+            <span className="text-xs font-semibold text-[#45464d] self-center">Status:</span>
+            {(['Semua', 'Belum Lunas', 'Lunas'] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setFilterStatus(s)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                  filterStatus === s ? 'bg-[#006c49] text-white shadow-xs' : 'bg-[#eff4ff] text-[#45464d] hover:bg-[#d3e4fe]'
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-          {(['Semua', 'Belum Lunas', 'Lunas'] as const).map((s) => (
+        {/* Date Filter Bar */}
+        <div className="pt-2 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
+            <span className="text-xs font-semibold text-[#45464d] flex items-center gap-1">
+              <span className="material-symbols-outlined text-[16px]">calendar_month</span>
+              Filter Tanggal:
+            </span>
             <button
-              key={s}
-              onClick={() => setFilterStatus(s)}
-              className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                filterStatus === s ? 'bg-[#006c49] text-white shadow-xs' : 'bg-[#eff4ff] text-[#45464d] hover:bg-[#d3e4fe]'
+              type="button"
+              onClick={() => setDateFilterMode('semua')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
+                dateFilterMode === 'semua'
+                  ? 'bg-[#006c49] text-white shadow-xs'
+                  : 'bg-gray-100 text-[#45464d] hover:bg-gray-200'
               }`}
             >
-              {s}
+              Semua Data
             </button>
-          ))}
+            <button
+              type="button"
+              onClick={() => setDateFilterMode('bulan_ini')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
+                dateFilterMode === 'bulan_ini'
+                  ? 'bg-[#006c49] text-white shadow-xs'
+                  : 'bg-gray-100 text-[#45464d] hover:bg-gray-200'
+              }`}
+            >
+              Bulan Ini
+            </button>
+            <button
+              type="button"
+              onClick={() => setDateFilterMode('hari_ini')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
+                dateFilterMode === 'hari_ini'
+                  ? 'bg-[#006c49] text-white shadow-xs'
+                  : 'bg-gray-100 text-[#45464d] hover:bg-gray-200'
+              }`}
+            >
+              Hari Ini
+            </button>
+
+            {/* Custom Range */}
+            <div className={`flex flex-wrap sm:flex-nowrap items-center gap-1.5 px-2 py-1 rounded-lg border transition-all ${
+              dateFilterMode === 'rentang'
+                ? 'bg-emerald-50/50 border-[#006c49] ring-1 ring-[#006c49]'
+                : 'bg-gray-50 border-[#c6c6cd]'
+            }`}>
+              <div className="flex items-center gap-1">
+                <span className="text-[11px] font-semibold text-gray-500">Dari:</span>
+                <input
+                  type="date"
+                  value={startDateFilter}
+                  onChange={(e) => {
+                    setStartDateFilter(e.target.value);
+                    setDateFilterMode('rentang');
+                  }}
+                  className="text-xs font-bold text-black bg-transparent outline-none cursor-pointer"
+                />
+              </div>
+              <span className="text-[11px] font-bold text-gray-400">s/d</span>
+              <div className="flex items-center gap-1">
+                <span className="text-[11px] font-semibold text-gray-500">Sampai:</span>
+                <input
+                  type="date"
+                  value={endDateFilter}
+                  onChange={(e) => {
+                    setEndDateFilter(e.target.value);
+                    setDateFilterMode('rentang');
+                  }}
+                  className="text-xs font-bold text-black bg-transparent outline-none cursor-pointer"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="text-[11px] text-gray-500 font-mono-jetbrains">
+            Menampilkan <strong>{filtered.length}</strong> dari {kasbons.length} kasbon
+          </div>
         </div>
       </div>
 
-      {/* Kasbon History Table (Only Table scrolls horizontally on Mobile) */}
+      {/* Kasbon History Table (Scrollable table with 5 rows view height + sticky header) */}
       <div className="bg-white rounded-xl border border-[#c6c6cd] shadow-xs overflow-hidden w-full">
         <div className="p-3.5 sm:p-4 border-b border-[#c6c6cd] bg-[#eff4ff]/60 flex justify-between items-center flex-wrap gap-2">
           <div>
             <h3 className="font-bold text-black text-sm sm:text-base">Daftar & Riwayat Kasbon</h3>
-            <p className="text-[11px] text-gray-500">Geser tabel ke samping untuk melihat rincian cicilan</p>
+            <p className="text-[11px] text-gray-500">Tampilan riwayat dapat di-scroll kebawah jika lebih dari 5 data</p>
           </div>
           <span className="text-xs font-semibold text-[#006c49] bg-emerald-50 border border-[#006c49]/30 px-2.5 py-1 rounded-full font-mono-jetbrains">
             {filtered.length} Data
           </span>
         </div>
 
-        <div className="overflow-x-auto w-full">
+        <div className="overflow-x-auto w-full max-h-[380px] overflow-y-auto">
           <table className="w-full text-left border-collapse text-sm min-w-[700px]">
-          <thead>
-            <tr className="bg-[#eff4ff] text-[#45464d] font-semibold border-b border-[#c6c6cd]">
-              <th className="p-4">ID Kasbon</th>
-              <th className="p-4">Pelanggan & Kontak</th>
-              <th className="p-4">Tgl Buat</th>
-              <th className="p-4 text-right">Total Kasbon</th>
-              <th className="p-4 text-right">Progres Cicilan</th>
-              <th className="p-4 text-right">Sisa Piutang</th>
-              <th className="p-4 text-center">Status</th>
-              <th className="p-4 text-center">Aksi Pelunasan</th>
+          <thead className="sticky top-0 z-10 bg-[#eff4ff] shadow-xs">
+            <tr className="text-[#45464d] font-semibold border-b border-[#c6c6cd]">
+              <th className="p-4 bg-[#eff4ff]">ID Kasbon</th>
+              <th className="p-4 bg-[#eff4ff]">Pelanggan & Kontak</th>
+              <th className="p-4 bg-[#eff4ff]">Tgl Buat</th>
+              <th className="p-4 bg-[#eff4ff] text-right">Total Kasbon</th>
+              <th className="p-4 bg-[#eff4ff] text-right">Progres Cicilan</th>
+              <th className="p-4 bg-[#eff4ff] text-right">Sisa Piutang</th>
+              <th className="p-4 bg-[#eff4ff] text-center">Status</th>
+              <th className="p-4 bg-[#eff4ff] text-center">Aksi Pelunasan</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#c6c6cd]/40">
@@ -911,20 +1053,68 @@ export const KasbonView: React.FC<KasbonViewProps> = ({
       {/* Add Kasbon Modal */}
       {showAdd && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border border-[#c6c6cd] space-y-4">
-            <h3 className="font-bold text-lg text-black border-b pb-2">Tambah Catatan Kasbon Baru</h3>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border border-[#c6c6cd] space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b pb-2">
+              <h3 className="font-bold text-lg text-black">Tambah Catatan Kasbon Baru</h3>
+              <button onClick={() => setShowAdd(false)} className="text-gray-400 hover:text-black">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
             <form onSubmit={handleAddKasbon} className="space-y-3 text-xs">
               <div>
-                <label className="font-semibold block mb-1 text-black">Nama Pelanggan</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Contoh: Pak Joko"
-                  value={nama}
-                  onChange={(e) => setNama(e.target.value)}
-                  className="w-full p-2 border rounded-lg border-[#c6c6cd] text-sm bg-white"
-                />
+                <div className="flex justify-between items-center mb-1">
+                  <label className="font-semibold text-black">
+                    Nama Pelanggan <span className="text-red-500 font-bold">*</span>
+                  </label>
+                  <span className="text-[10px] text-gray-500">Pilih dari list atau ketik baru</span>
+                </div>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    list="kasbon-cust-datalist"
+                    placeholder="Ketik atau pilih nama pelanggan..."
+                    value={nama}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setNama(val);
+                      const matched = customers.find((c) => c.nama.toLowerCase() === val.toLowerCase());
+                      if (matched && matched.noHp) {
+                        setHp(matched.noHp);
+                      }
+                    }}
+                    className="w-full p-2.5 border rounded-lg border-[#c6c6cd] text-sm bg-white font-medium text-black focus:ring-2 focus:ring-[#006c49] focus:outline-none"
+                  />
+                  <datalist id="kasbon-cust-datalist">
+                    {customers.map((c) => (
+                      <option key={c.id} value={c.nama}>
+                        {c.noHp ? `${c.nama} (${c.noHp})` : c.nama}
+                      </option>
+                    ))}
+                  </datalist>
+                </div>
+
+                {/* Quick select customer pills */}
+                {customers.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1 max-h-20 overflow-y-auto pt-0.5">
+                    {customers.slice(0, 6).map((c) => (
+                      <button
+                        type="button"
+                        key={c.id}
+                        onClick={() => handleSelectExistingCustomer(c.nama)}
+                        className={`text-[10px] px-2 py-0.5 rounded-full border transition-all ${
+                          nama.toLowerCase() === c.nama.toLowerCase()
+                            ? 'bg-[#006c49] text-white border-[#006c49] font-bold'
+                            : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                        }`}
+                      >
+                        {c.nama}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
+
               <div>
                 <label className="font-semibold block mb-1 text-black">No. WhatsApp / HP</label>
                 <input
@@ -932,9 +1122,10 @@ export const KasbonView: React.FC<KasbonViewProps> = ({
                   placeholder="0812xxxxxxxx"
                   value={hp}
                   onChange={(e) => setHp(e.target.value)}
-                  className="w-full p-2 border rounded-lg border-[#c6c6cd] text-sm bg-white"
+                  className="w-full p-2.5 border rounded-lg border-[#c6c6cd] text-sm bg-white"
                 />
               </div>
+
               <div>
                 <label className="font-semibold block mb-1 text-black">Nominal Kasbon (Rp)</label>
                 <input
@@ -944,9 +1135,10 @@ export const KasbonView: React.FC<KasbonViewProps> = ({
                   placeholder="0"
                   value={nominalStr}
                   onChange={(e) => setNominalStr(formatThousand(e.target.value))}
-                  className="w-full p-2 border rounded-lg border-[#c6c6cd] text-sm font-mono-jetbrains font-bold bg-white"
+                  className="w-full p-2.5 border rounded-lg border-[#c6c6cd] text-sm font-mono-jetbrains font-bold bg-white text-black"
                 />
               </div>
+
               <div>
                 <label className="font-semibold block mb-1 text-black">Catatan Transaksi</label>
                 <input
@@ -954,9 +1146,10 @@ export const KasbonView: React.FC<KasbonViewProps> = ({
                   placeholder="Keterangan transaksi kasbon"
                   value={catatan}
                   onChange={(e) => setCatatan(e.target.value)}
-                  className="w-full p-2 border rounded-lg border-[#c6c6cd] text-sm bg-white"
+                  className="w-full p-2.5 border rounded-lg border-[#c6c6cd] text-sm bg-white"
                 />
               </div>
+
               <div className="pt-2 flex gap-2">
                 <button
                   type="button"
@@ -967,8 +1160,9 @@ export const KasbonView: React.FC<KasbonViewProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 bg-[#006c49] text-white rounded-lg text-sm font-semibold hover:bg-[#006c49]/90 shadow-xs"
+                  className="flex-1 py-2.5 bg-[#006c49] text-white rounded-lg text-sm font-semibold hover:bg-[#006c49]/90 shadow-xs flex items-center justify-center gap-1.5"
                 >
+                  <span className="material-symbols-outlined text-[16px]">save</span>
                   Simpan Kasbon
                 </button>
               </div>
@@ -980,7 +1174,7 @@ export const KasbonView: React.FC<KasbonViewProps> = ({
       {/* Edit Kasbon Modal */}
       {editingKasbon && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border border-[#c6c6cd] space-y-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border border-[#c6c6cd] space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b border-gray-100 pb-2">
               <div>
                 <h3 className="font-bold text-lg text-black">Edit Catatan Kasbon</h3>
@@ -993,24 +1187,46 @@ export const KasbonView: React.FC<KasbonViewProps> = ({
 
             <form onSubmit={handleSaveEditKasbon} className="space-y-3 text-xs">
               <div>
-                <label className="font-semibold block mb-1 text-black">Nama Pelanggan</label>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="font-semibold text-black">
+                    Nama Pelanggan <span className="text-red-500 font-bold">*</span>
+                  </label>
+                  <span className="text-[10px] text-gray-500">Pilih atau ketik</span>
+                </div>
                 <input
                   type="text"
                   required
+                  list="edit-kasbon-cust-datalist"
                   value={editKasbonNama}
-                  onChange={(e) => setEditKasbonNama(e.target.value)}
-                  className="w-full p-2 border rounded-lg border-[#c6c6cd] text-sm bg-white"
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setEditKasbonNama(val);
+                    const matched = customers.find((c) => c.nama.toLowerCase() === val.toLowerCase());
+                    if (matched && matched.noHp) {
+                      setEditKasbonHp(matched.noHp);
+                    }
+                  }}
+                  className="w-full p-2.5 border rounded-lg border-[#c6c6cd] text-sm bg-white font-medium text-black focus:ring-2 focus:ring-[#006c49]"
                 />
+                <datalist id="edit-kasbon-cust-datalist">
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.nama}>
+                      {c.noHp ? `${c.nama} (${c.noHp})` : c.nama}
+                    </option>
+                  ))}
+                </datalist>
               </div>
+
               <div>
                 <label className="font-semibold block mb-1 text-black">No. WhatsApp / HP</label>
                 <input
                   type="text"
                   value={editKasbonHp}
                   onChange={(e) => setEditKasbonHp(e.target.value)}
-                  className="w-full p-2 border rounded-lg border-[#c6c6cd] text-sm bg-white"
+                  className="w-full p-2.5 border rounded-lg border-[#c6c6cd] text-sm bg-white"
                 />
               </div>
+
               <div>
                 <label className="font-semibold block mb-1 text-black">Total Nominal Kasbon (Rp)</label>
                 <input
@@ -1019,18 +1235,20 @@ export const KasbonView: React.FC<KasbonViewProps> = ({
                   required
                   value={editKasbonTotalStr}
                   onChange={(e) => setEditKasbonTotalStr(formatThousand(e.target.value))}
-                  className="w-full p-2 border rounded-lg border-[#c6c6cd] text-sm font-mono-jetbrains font-bold bg-white"
+                  className="w-full p-2.5 border rounded-lg border-[#c6c6cd] text-sm font-mono-jetbrains font-bold bg-white text-black"
                 />
               </div>
+
               <div>
                 <label className="font-semibold block mb-1 text-black">Catatan Transaksi</label>
                 <input
                   type="text"
                   value={editKasbonCatatan}
                   onChange={(e) => setEditKasbonCatatan(e.target.value)}
-                  className="w-full p-2 border rounded-lg border-[#c6c6cd] text-sm bg-white"
+                  className="w-full p-2.5 border rounded-lg border-[#c6c6cd] text-sm bg-white"
                 />
               </div>
+
               <div className="pt-2 flex gap-2">
                 <button
                   type="button"
@@ -1041,8 +1259,9 @@ export const KasbonView: React.FC<KasbonViewProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 bg-[#006c49] text-white rounded-lg text-sm font-semibold hover:bg-[#006c49]/90 shadow-xs"
+                  className="flex-1 py-2.5 bg-[#006c49] text-white rounded-lg text-sm font-semibold hover:bg-[#006c49]/90 shadow-xs flex items-center justify-center gap-1.5"
                 >
+                  <span className="material-symbols-outlined text-[16px]">save</span>
                   Simpan Perubahan
                 </button>
               </div>
