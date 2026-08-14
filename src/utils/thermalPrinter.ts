@@ -228,20 +228,21 @@ export async function printViaRawBT(
     }
     const base64Data = btoa(binaryStr);
 
-    // Try Android Intent URL first (works best in Chrome on Android)
-    const intentUrl = `intent:base64,${base64Data}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;type=application/x-rawbt;end;`;
+    // Direct scheme registered by RawBT App
     const directRawbtUrl = `rawbt:base64,${base64Data}`;
 
-    // Create an invisible iframe or window location
-    const isAndroid = /android/i.test(navigator.userAgent || '');
-
-    if (isAndroid) {
-      // In Android, launching the intent directly routes to RawBT app
-      window.location.href = intentUrl;
-    } else {
-      // Fallback for other browsers with rawbt protocol
-      window.location.href = directRawbtUrl;
-    }
+    // Standard Android Intent without strict package lock that causes Play Store fallback when intent filter matches mime
+    // Or direct window.location / anchor trigger
+    const link = document.createElement('a');
+    link.href = directRawbtUrl;
+    link.target = '_self';
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      try {
+        document.body.removeChild(link);
+      } catch {}
+    }, 500);
 
     return {
       success: true,
