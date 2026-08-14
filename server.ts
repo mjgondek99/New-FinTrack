@@ -92,28 +92,8 @@ async function initDatabase() {
     console.error('SQLite init skipped/failed, falling back to JSON store:', e);
   }
 
-  if (getKv('users', null) === null) {
+  if (!getKv('users', null)) {
     setKv('users', DEFAULT_USERS);
-  }
-  if (getKv('customers', null) === null) {
-    setKv('customers', [
-      {
-        id: 'CUST-001',
-        nama: 'Bapak Subur',
-        noHp: '081234567890',
-        alamat: 'Jl. Melati No. 12',
-        catatan: 'Langganan transfer BRI & tarik tunai',
-        createdAt: '2026-08-01 08:00'
-      },
-      {
-        id: 'CUST-002',
-        nama: 'Ibu Rina Amalia',
-        noHp: '085712345678',
-        alamat: 'Dusun Makmur RT 02/03',
-        catatan: 'Top Up Dana & ShopeePay',
-        createdAt: '2026-08-02 09:15'
-      }
-    ]);
   }
   if (!getKv('platforms', null)) {
     setKv('platforms', ['Cash / Tunai', 'BriLink', 'Dana', 'Mitra Shopee', 'QRIS', 'Transfer Bank']);
@@ -195,7 +175,6 @@ async function startServer() {
   app.get('/api/data', (req, res) => {
     const data = {
       users: getKv('users', null),
-      customers: getKv('customers', null),
       transactions: getKv('transactions', null),
       kasbons: getKv('kasbons', null),
       pengeluaran: getKv('pengeluaran', null),

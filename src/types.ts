@@ -12,7 +12,6 @@ export interface UserAccount {
 export type NavTab = 
   | 'dashboard'
   | 'transaksi'
-  | 'pelanggan'
   | 'laporan'
   | 'kasbon'
   | 'pengeluaran'
@@ -21,15 +20,6 @@ export type NavTab =
   | 'export_laporan'
   | 'akun'
   | 'pengaturan';
-
-export interface Customer {
-  id: string;
-  nama: string;
-  noHp: string;
-  alamat?: string;
-  catatan?: string;
-  createdAt?: string;
-}
 
 export interface TransactionItem {
   id: string;
@@ -43,8 +33,6 @@ export interface TransactionItem {
   totalPenagihan?: number;
   status: 'Berhasil' | 'Pending' | 'Gagal';
   pelanggan: string;
-  isKasbon?: boolean;
-  kasbonId?: string;
   operator?: string;
 }
 

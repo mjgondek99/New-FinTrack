@@ -38,31 +38,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 }) => {
   const [activityFilter, setActivityFilter] = useState<'Semua' | 'Transaksi' | 'Kasbon' | 'Pengeluaran' | 'Mutasi'>('Semua');
 
-  // Date constants
-  const todayStr = new Date().toISOString().split('T')[0];
-  const firstDayOfMonthStr = `${todayStr.slice(0, 7)}-01`;
-
-  // Date Filter State for Activity Table
-  const [activityDateMode, setActivityDateMode] = useState<'semua' | 'hari_ini' | 'bulan_ini' | 'rentang'>('semua');
-  const [activityStartDate, setActivityStartDate] = useState<string>(firstDayOfMonthStr);
-  const [activityEndDate, setActivityEndDate] = useState<string>(todayStr);
-
-  // Date filtering for Omzet & Pendapatan Admin (default to today)
-  const [dateMode, setDateMode] = useState<'today' | 'custom' | 'all'>('today');
-  const [selectedDate, setSelectedDate] = useState<string>(todayStr);
-
-  const activeFilterDate = dateMode === 'today' ? todayStr : selectedDate;
-
-  const filteredDashboardTransactions = transactions.filter((t) => {
-    if (dateMode === 'all') return true;
-    return t.tanggal.startsWith(activeFilterDate);
-  });
-
-  const totalOmzet = filteredDashboardTransactions.reduce((acc, curr) => {
+  const totalOmzet = transactions.reduce((acc, curr) => {
     const adminLuar = curr.biayaAdminLuar ?? curr.biayaAdmin;
     return acc + (curr.totalPenagihan ?? (curr.jumlah + adminLuar));
   }, 0);
-  const totalAdminFee = filteredDashboardTransactions.reduce((acc, curr) => acc + (curr.biayaAdminLuar ?? curr.biayaAdmin), 0);
+  const totalAdminFee = transactions.reduce((acc, curr) => acc + (curr.biayaAdminLuar ?? curr.biayaAdmin), 0);
   const totalKasbonPending = kasbons
     .filter((k) => k.status === 'Belum Lunas')
     .reduce((acc, curr) => acc + curr.sisaKasbon, 0);
@@ -135,79 +115,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   ]);
 
   const filteredActivities = allActivities.filter((act) => {
-    const matchCategory = activityFilter === 'Semua' || act.kategori === activityFilter;
-
-    const itemDate = act.tanggal.split(' ')[0];
-    let matchDate = true;
-    if (activityDateMode === 'hari_ini') {
-      matchDate = itemDate === todayStr;
-    } else if (activityDateMode === 'bulan_ini') {
-      matchDate = itemDate.startsWith(todayStr.slice(0, 7));
-    } else if (activityDateMode === 'rentang') {
-      if (activityStartDate && activityEndDate) {
-        matchDate = itemDate >= activityStartDate && itemDate <= activityEndDate;
-      } else if (activityStartDate) {
-        matchDate = itemDate >= activityStartDate;
-      } else if (activityEndDate) {
-        matchDate = itemDate <= activityEndDate;
-      }
-    }
-
-    return matchCategory && matchDate;
+    if (activityFilter === 'Semua') return true;
+    return act.kategori === activityFilter;
   });
 
   return (
     <div className="max-w-[1280px] mx-auto space-y-4 sm:space-y-6 w-full max-w-full">
-      {/* Title & Date Selector */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-4 sm:p-5 rounded-2xl border border-[#c6c6cd] shadow-xs">
-        <div>
-          <h2 className="text-xl sm:text-2xl font-bold text-black">Ringkasan Operasional Agen</h2>
-          <p className="text-xs sm:text-sm text-[#45464d] mt-0.5">
-            Pantau transaksi harian, saldo platform, kuota limit DANA, kasbon pelanggan, dan administrasi toko.
-          </p>
-        </div>
-
-        {/* Date Filter Bar */}
-        <div className="flex flex-wrap items-center gap-2 bg-[#f8f9ff] p-1.5 rounded-xl border border-[#c6c6cd]/80">
-          <button
-            type="button"
-            onClick={() => setDateMode('today')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
-              dateMode === 'today'
-                ? 'bg-[#006c49] text-white shadow-xs'
-                : 'text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            <span className="material-symbols-outlined text-[15px]">today</span>
-            Hari Ini
-          </button>
-
-          <div className="flex items-center gap-1 bg-white border border-[#c6c6cd] rounded-lg px-2 py-1">
-            <span className="material-symbols-outlined text-[15px] text-gray-500">calendar_month</span>
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => {
-                setSelectedDate(e.target.value);
-                setDateMode('custom');
-              }}
-              className="text-xs font-semibold text-black bg-transparent outline-none cursor-pointer"
-              title="Pilih Tanggal Transaksi"
-            />
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setDateMode('all')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-              dateMode === 'all'
-                ? 'bg-[#006c49] text-white shadow-xs'
-                : 'text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            Semua
-          </button>
-        </div>
+      {/* Title */}
+      <div>
+        <h2 className="text-xl sm:text-2xl font-bold text-black">Ringkasan Operasional Agen</h2>
+        <p className="text-xs sm:text-sm text-[#45464d] mt-0.5">
+          Pantau transaksi harian, saldo platform, kuota limit DANA, kasbon pelanggan, dan administrasi toko.
+        </p>
       </div>
 
       {/* Summary Metric Cards */}
@@ -215,16 +134,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Total Omzet */}
         <div className="bg-white p-4 sm:p-5 rounded-xl border border-[#c6c6cd] shadow-xs flex flex-col justify-between">
           <div className="flex justify-between items-center mb-3">
-            <div>
-              <span className="text-xs font-semibold uppercase text-[#45464d] block">Total Omzet Transaksi</span>
-              <span className="text-[10px] text-[#006c49] font-bold">
-                {dateMode === 'today'
-                  ? `📅 Hari Ini (${todayStr})`
-                  : dateMode === 'custom'
-                  ? `📅 Tgl: ${selectedDate}`
-                  : '📅 Semua Waktu'}
-              </span>
-            </div>
+            <span className="text-xs font-semibold uppercase text-[#45464d]">Total Omzet Transaksi</span>
             <div className="p-2 bg-[#006c49]/10 text-[#006c49] rounded-lg">
               <span className="material-symbols-outlined text-[20px]">payments</span>
             </div>
@@ -235,7 +145,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </h3>
             <p className="text-xs text-[#006c49] font-medium mt-1 flex items-center gap-1">
               <span className="material-symbols-outlined text-sm">trending_up</span>
-              {filteredDashboardTransactions.length} Transaksi Terpilih
+              {transactions.length} Total Transaksi
             </p>
           </div>
         </div>
@@ -243,16 +153,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* Keuntungan Admin */}
         <div className="bg-white p-4 sm:p-5 rounded-xl border border-[#c6c6cd] shadow-xs flex flex-col justify-between">
           <div className="flex justify-between items-center mb-3">
-            <div>
-              <span className="text-xs font-semibold uppercase text-[#45464d] block">Pendapatan Admin</span>
-              <span className="text-[10px] text-blue-700 font-bold">
-                {dateMode === 'today'
-                  ? `📅 Hari Ini (${todayStr})`
-                  : dateMode === 'custom'
-                  ? `📅 Tgl: ${selectedDate}`
-                  : '📅 Semua Waktu'}
-              </span>
-            </div>
+            <span className="text-xs font-semibold uppercase text-[#45464d]">Pendapatan Admin (Luar)</span>
             <div className="p-2 bg-blue-100 text-blue-700 rounded-lg">
               <span className="material-symbols-outlined text-[20px]">savings</span>
             </div>
@@ -416,131 +317,53 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
       {/* Combined Recent Activities Table (Transaksi, Kasbon, Pengeluaran, Mutasi Saldo) */}
       <div className="bg-white rounded-xl border border-[#c6c6cd] shadow-xs overflow-hidden w-full space-y-0">
-        <div className="p-4 border-b border-[#c6c6cd] bg-[#eff4ff]/60 flex flex-col gap-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div>
-              <h3 className="text-base sm:text-lg font-bold text-black">Aktivitas & Transaksi Terbaru</h3>
-              <p className="text-[11px] text-gray-500">
-                Riwayat gabungan transaksi, kasbon, pengeluaran toko, & mutasi saldo (tampilan 5 awal, scroll untuk melihat seluruh data).
-              </p>
-            </div>
-            <span className="text-xs font-semibold text-[#006c49] bg-emerald-50 border border-[#006c49]/30 px-2.5 py-1 rounded-full font-mono-jetbrains self-start sm:self-auto">
-              {filteredActivities.length} Aktivitas
-            </span>
+        <div className="p-4 border-b border-[#c6c6cd] bg-[#eff4ff]/60 flex justify-between items-center flex-wrap gap-3">
+          <div>
+            <h3 className="text-base sm:text-lg font-bold text-black">Aktivitas & Transaksi Terbaru</h3>
+            <p className="text-[11px] text-gray-500">
+              Riwayat gabungan dari transaksi agen, kasbon pelanggan, pengeluaran toko, dan mutasi saldo (terurut terkini).
+            </p>
           </div>
 
-          <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-2 pt-2 border-t border-gray-200/60">
-            {/* Activity Category Filter Chips */}
-            <div className="flex flex-wrap gap-1.5 items-center">
-              <span className="text-xs font-semibold text-[#45464d] mr-1">Kategori:</span>
-              {(['Semua', 'Transaksi', 'Kasbon', 'Pengeluaran', 'Mutasi'] as const).map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setActivityFilter(tab)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                    activityFilter === tab
-                      ? 'bg-[#006c49] text-white shadow-xs'
-                      : 'bg-white text-[#45464d] border border-[#c6c6cd] hover:bg-[#d3e4fe]'
-                  }`}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
-
-            {/* Activity Date Filter Controls */}
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-xs font-semibold text-[#45464d] flex items-center gap-1">
-                <span className="material-symbols-outlined text-[16px]">calendar_month</span>
-                Tanggal:
-              </span>
+          {/* Activity Category Filter Chips */}
+          <div className="flex flex-wrap gap-1.5 items-center">
+            {(['Semua', 'Transaksi', 'Kasbon', 'Pengeluaran', 'Mutasi'] as const).map((tab) => (
               <button
-                type="button"
-                onClick={() => setActivityDateMode('semua')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
-                  activityDateMode === 'semua'
+                key={tab}
+                onClick={() => setActivityFilter(tab)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                  activityFilter === tab
                     ? 'bg-[#006c49] text-white shadow-xs'
-                    : 'bg-white border border-[#c6c6cd] text-[#45464d] hover:bg-gray-100'
+                    : 'bg-white text-[#45464d] border border-[#c6c6cd] hover:bg-[#d3e4fe]'
                 }`}
               >
-                Semua
+                {tab}
               </button>
-              <button
-                type="button"
-                onClick={() => setActivityDateMode('bulan_ini')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
-                  activityDateMode === 'bulan_ini'
-                    ? 'bg-[#006c49] text-white shadow-xs'
-                    : 'bg-white border border-[#c6c6cd] text-[#45464d] hover:bg-gray-100'
-                }`}
-              >
-                Bulan Ini
-              </button>
-              <button
-                type="button"
-                onClick={() => setActivityDateMode('hari_ini')}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
-                  activityDateMode === 'hari_ini'
-                    ? 'bg-[#006c49] text-white shadow-xs'
-                    : 'bg-white border border-[#c6c6cd] text-[#45464d] hover:bg-gray-100'
-                }`}
-              >
-                Hari Ini
-              </button>
-
-              {/* Custom Range */}
-              <div className={`flex flex-wrap sm:flex-nowrap items-center gap-1 px-2 py-0.5 rounded-lg border transition-all ${
-                activityDateMode === 'rentang'
-                  ? 'bg-emerald-50/50 border-[#006c49] ring-1 ring-[#006c49]'
-                  : 'bg-white border-[#c6c6cd]'
-              }`}>
-                <input
-                  type="date"
-                  value={activityStartDate}
-                  onChange={(e) => {
-                    setActivityStartDate(e.target.value);
-                    setActivityDateMode('rentang');
-                  }}
-                  className="text-xs font-bold text-black bg-transparent outline-none cursor-pointer"
-                  title="Dari Tanggal"
-                />
-                <span className="text-[11px] font-bold text-gray-400">s/d</span>
-                <input
-                  type="date"
-                  value={activityEndDate}
-                  onChange={(e) => {
-                    setActivityEndDate(e.target.value);
-                    setActivityDateMode('rentang');
-                  }}
-                  className="text-xs font-bold text-black bg-transparent outline-none cursor-pointer"
-                  title="Sampai Tanggal"
-                />
-              </div>
-            </div>
+            ))}
           </div>
         </div>
 
-        <div className="overflow-x-auto w-full max-h-[380px] overflow-y-auto">
+        <div className="overflow-x-auto w-full">
           <table className="w-full text-left border-collapse text-sm min-w-[760px]">
-            <thead className="sticky top-0 z-10 bg-[#eff4ff]">
+            <thead>
               <tr className="bg-[#eff4ff] text-[#45464d] font-semibold border-b border-[#c6c6cd]">
-                <th className="p-3.5 bg-[#eff4ff]">ID & Kategori</th>
-                <th className="p-3.5 bg-[#eff4ff]">Tanggal & Waktu</th>
-                <th className="p-3.5 bg-[#eff4ff]">Tipe / Jenis</th>
-                <th className="p-3.5 bg-[#eff4ff]">Keterangan / Rincian</th>
-                <th className="p-3.5 bg-[#eff4ff] text-right">Nominal (Rp)</th>
-                <th className="p-3.5 bg-[#eff4ff] text-center">Status</th>
+                <th className="p-3.5">ID & Kategori</th>
+                <th className="p-3.5">Tanggal & Waktu</th>
+                <th className="p-3.5">Tipe / Jenis</th>
+                <th className="p-3.5">Keterangan / Rincian</th>
+                <th className="p-3.5 text-right">Nominal (Rp)</th>
+                <th className="p-3.5 text-center">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#c6c6cd]/40">
               {filteredActivities.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="p-8 text-center text-gray-500">
-                    Belum ada aktivitas yang dicatat pada kategori dan filter tanggal ini.
+                    Belum ada aktivitas yang dicatat pada kategori ini.
                   </td>
                 </tr>
               ) : (
-                filteredActivities.map((act) => (
+                filteredActivities.slice(0, 15).map((act) => (
                   <tr key={`${act.kategori}-${act.id}`} className="hover:bg-[#f8f9ff]">
                     <td className="p-3.5">
                       <div className="flex items-center gap-2">

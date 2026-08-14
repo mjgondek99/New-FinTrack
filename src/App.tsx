@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { NavTab, UserAccount, TransactionItem, KasbonItem, PengeluaranItem, MutasiSaldoItem, Customer } from './types';
+import { NavTab, UserAccount, TransactionItem, KasbonItem, PengeluaranItem, MutasiSaldoItem } from './types';
 import {
   INITIAL_TRANSACTIONS,
   INITIAL_KASBON,
@@ -7,8 +7,7 @@ import {
   INITIAL_MUTASI,
   INITIAL_LOGIN_LOGS,
   INITIAL_PLATFORMS,
-  INITIAL_JENIS_TRANSAKSI,
-  INITIAL_CUSTOMERS
+  INITIAL_JENIS_TRANSAKSI
 } from './data/mockData';
 
 import { Sidebar } from './components/Sidebar';
@@ -18,7 +17,6 @@ import { LaporanView } from './components/LaporanView';
 import { DashboardView } from './components/DashboardView';
 import { TransaksiView } from './components/TransaksiView';
 import { KasbonView } from './components/KasbonView';
-import { PelangganView } from './components/PelangganView';
 import { PengeluaranView } from './components/PengeluaranView';
 import { SaldoView } from './components/SaldoView';
 import { PlatformJenisView } from './components/PlatformJenisView';
@@ -106,14 +104,6 @@ export default function App() {
     return INITIAL_MUTASI;
   });
 
-  const [customers, setCustomers] = useState<Customer[]>(() => {
-    const saved = localStorage.getItem('fintrack_customers');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { console.error(e); }
-    }
-    return INITIAL_CUSTOMERS;
-  });
-
   const [loginLogs] = useState(INITIAL_LOGIN_LOGS);
 
   // Platforms and Transaction Types state
@@ -195,14 +185,6 @@ export default function App() {
     });
   };
 
-  const updateCustomers = (updater: React.SetStateAction<Customer[]>) => {
-    setCustomers((prev) => {
-      const next = typeof updater === 'function' ? (updater as (p: Customer[]) => Customer[])(prev) : updater;
-      syncMutation('customers', next, 'fintrack_customers');
-      return next;
-    });
-  };
-
   const updatePlatforms = (updater: React.SetStateAction<string[]>) => {
     setPlatforms((prev) => {
       const next = typeof updater === 'function' ? (updater as (p: string[]) => string[])(prev) : updater;
@@ -266,25 +248,19 @@ export default function App() {
             localStorage.setItem('fintrack_mutasis', JSON.stringify(res.data.mutasis));
           }
 
-          // 6. Customers
-          if (Array.isArray(res.data.customers)) {
-            setCustomers(res.data.customers);
-            localStorage.setItem('fintrack_customers', JSON.stringify(res.data.customers));
-          }
-
-          // 7. Platforms
+          // 6. Platforms
           if (Array.isArray(res.data.platforms) && res.data.platforms.length > 0) {
             setPlatforms(res.data.platforms);
             localStorage.setItem('fintrack_platforms', JSON.stringify(res.data.platforms));
           }
 
-          // 8. Jenis
+          // 7. Jenis
           if (Array.isArray(res.data.jenis) && res.data.jenis.length > 0) {
             setJenisList(res.data.jenis);
             localStorage.setItem('fintrack_jenis', JSON.stringify(res.data.jenis));
           }
 
-          // 9. Saldo Awal Map
+          // 8. Saldo Awal Map
           if (res.data.saldoAwalMap && typeof res.data.saldoAwalMap === 'object') {
             setSaldoAwalMap(res.data.saldoAwalMap);
             localStorage.setItem('fintrack_saldo_awal', JSON.stringify(res.data.saldoAwalMap));
@@ -305,7 +281,6 @@ export default function App() {
       const existingKasbons = localStorage.getItem('fintrack_kasbons');
       const existingPengeluaran = localStorage.getItem('fintrack_pengeluaran');
       const existingMutasis = localStorage.getItem('fintrack_mutasis');
-      const existingCustomers = localStorage.getItem('fintrack_customers');
 
       if (existingTrxs) {
         try { syncMutation('transactions', JSON.parse(existingTrxs), 'fintrack_transactions'); } catch (e) {}
@@ -321,9 +296,6 @@ export default function App() {
       }
       if (existingMutasis) {
         try { syncMutation('mutasis', JSON.parse(existingMutasis), 'fintrack_mutasis'); } catch (e) {}
-      }
-      if (existingCustomers) {
-        try { syncMutation('customers', JSON.parse(existingCustomers), 'fintrack_customers'); } catch (e) {}
       }
       localStorage.setItem('fintrack_seeded_v1', 'true');
     }
@@ -473,26 +445,6 @@ export default function App() {
               platforms={platforms}
               jenisList={jenisList}
               currentUser={currentUser}
-              customers={customers}
-              setCustomers={updateCustomers}
-              kasbons={kasbons}
-              setKasbons={updateKasbons}
-            />
-          )}
-
-          {activeTab === 'pelanggan' && (
-            <PelangganView
-              customers={customers}
-              setCustomers={updateCustomers}
-              transactions={transactions}
-              kasbons={kasbons}
-              currentUser={currentUser}
-              onNavigateToTransaksiWithCustomer={(custName) => {
-                setActiveTab('transaksi');
-              }}
-              onNavigateToKasbonWithCustomer={(custName, phone) => {
-                setActiveTab('kasbon');
-              }}
             />
           )}
 
@@ -512,8 +464,6 @@ export default function App() {
             <KasbonView
               kasbons={kasbons}
               setKasbons={updateKasbons}
-              customers={customers}
-              setCustomers={updateCustomers}
               onNavigateToExport={() => setActiveTab('export_laporan')}
             />
           )}
@@ -538,7 +488,6 @@ export default function App() {
               currentUser={currentUser}
               transactions={transactions}
               pengeluaranList={pengeluaranList}
-              kasbons={kasbons}
             />
           )}
 

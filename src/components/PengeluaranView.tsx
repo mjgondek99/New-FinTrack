@@ -22,15 +22,6 @@ export const PengeluaranView: React.FC<PengeluaranViewProps> = ({
   const [jumlahStr, setJumlahStr] = useState<string>('50.000');
   const [keterangan, setKeterangan] = useState('');
 
-  // Filter State
-  const [search, setSearch] = useState('');
-  const [selectedKategori, setSelectedKategori] = useState<string>('Semua');
-  const todayStr = new Date().toISOString().split('T')[0];
-  const firstDayOfMonthStr = `${todayStr.slice(0, 7)}-01`;
-  const [dateFilterMode, setDateFilterMode] = useState<'semua' | 'hari_ini' | 'bulan_ini' | 'rentang'>('semua');
-  const [startDateFilter, setStartDateFilter] = useState<string>(firstDayOfMonthStr);
-  const [endDateFilter, setEndDateFilter] = useState<string>(todayStr);
-
   // Edit & Delete State
   const [editingExpense, setEditingExpense] = useState<PengeluaranItem | null>(null);
   const [editKategori, setEditKategori] = useState<'Operasional' | 'Peralatan' | 'Lainnya'>('Operasional');
@@ -107,35 +98,8 @@ export const PengeluaranView: React.FC<PengeluaranViewProps> = ({
     setKeterangan('');
   };
 
-  const filteredPengeluaran = sortByDateDesc(
-    pengeluaranList.filter((p) => {
-      const matchSearch =
-        p.keterangan.toLowerCase().includes(search.toLowerCase()) ||
-        p.id.toLowerCase().includes(search.toLowerCase()) ||
-        (p.sumberDana && p.sumberDana.toLowerCase().includes(search.toLowerCase()));
-      const matchKategori = selectedKategori === 'Semua' || p.kategori === selectedKategori;
-
-      const itemDate = p.tanggal.split(' ')[0];
-      let matchDate = true;
-      if (dateFilterMode === 'hari_ini') {
-        matchDate = itemDate === todayStr;
-      } else if (dateFilterMode === 'bulan_ini') {
-        matchDate = itemDate.startsWith(todayStr.slice(0, 7));
-      } else if (dateFilterMode === 'rentang') {
-        if (startDateFilter && endDateFilter) {
-          matchDate = itemDate >= startDateFilter && itemDate <= endDateFilter;
-        } else if (startDateFilter) {
-          matchDate = itemDate >= startDateFilter;
-        } else if (endDateFilter) {
-          matchDate = itemDate <= endDateFilter;
-        }
-      }
-
-      return matchSearch && matchKategori && matchDate;
-    })
-  );
-
-  const totalExpense = filteredPengeluaran.reduce((acc, curr) => acc + curr.jumlah, 0);
+  const totalExpense = pengeluaranList.reduce((acc, curr) => acc + curr.jumlah, 0);
+  const sortedPengeluaran = sortByDateDesc(pengeluaranList);
 
   return (
     <div className="max-w-[1280px] mx-auto space-y-4 sm:space-y-6 w-full max-w-full">
@@ -168,9 +132,7 @@ export const PengeluaranView: React.FC<PengeluaranViewProps> = ({
       {/* Summary Card */}
       <div className="bg-white p-4 sm:p-5 rounded-xl border border-[#c6c6cd] shadow-xs flex justify-between items-center w-full">
         <div>
-          <span className="text-xs font-semibold text-[#45464d] uppercase">
-            Total Pengeluaran ({dateFilterMode === 'hari_ini' ? 'Hari Ini' : dateFilterMode === 'bulan_ini' ? 'Bulan Ini' : dateFilterMode === 'rentang' ? 'Rentang Terpilih' : 'Semua Data'})
-          </span>
+          <span className="text-xs font-semibold text-[#45464d] uppercase">Total Pengeluaran Agustus</span>
           <h3 className="text-2xl font-bold font-mono-jetbrains text-[#ba1a1a]">
             Rp {totalExpense.toLocaleString('id-ID')}
           </h3>
@@ -180,156 +142,40 @@ export const PengeluaranView: React.FC<PengeluaranViewProps> = ({
         </div>
       </div>
 
-      {/* Filters & Search Bar */}
-      <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-[#c6c6cd] shadow-xs flex flex-col gap-3 w-full">
-        <div className="flex flex-col sm:flex-row gap-3 justify-between items-stretch sm:items-center w-full">
-          <div className="relative w-full sm:w-80">
-            <input
-              type="text"
-              placeholder="Cari ID / keterangan pengeluaran..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 border border-[#c6c6cd] rounded-lg text-sm bg-white"
-            />
-            <span className="material-symbols-outlined absolute left-2.5 top-2.5 text-gray-400 text-[18px]">
-              search
-            </span>
-          </div>
-
-          <div className="flex flex-wrap gap-1.5 sm:gap-2 items-center w-full sm:w-auto">
-            <span className="text-xs font-semibold text-[#45464d] self-center">Kategori:</span>
-            {['Semua', 'Operasional', 'Peralatan', 'Lainnya'].map((cat) => (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => setSelectedKategori(cat)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                  selectedKategori === cat
-                    ? 'bg-[#006c49] text-white shadow-xs'
-                    : 'bg-[#eff4ff] text-[#45464d] hover:bg-[#d3e4fe]'
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Date Filter Bar */}
-        <div className="pt-2 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
-            <span className="text-xs font-semibold text-[#45464d] flex items-center gap-1">
-              <span className="material-symbols-outlined text-[16px]">calendar_month</span>
-              Filter Tanggal:
-            </span>
-            <button
-              type="button"
-              onClick={() => setDateFilterMode('semua')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
-                dateFilterMode === 'semua'
-                  ? 'bg-[#006c49] text-white shadow-xs'
-                  : 'bg-gray-100 text-[#45464d] hover:bg-gray-200'
-              }`}
-            >
-              Semua Data
-            </button>
-            <button
-              type="button"
-              onClick={() => setDateFilterMode('bulan_ini')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
-                dateFilterMode === 'bulan_ini'
-                  ? 'bg-[#006c49] text-white shadow-xs'
-                  : 'bg-gray-100 text-[#45464d] hover:bg-gray-200'
-              }`}
-            >
-              Bulan Ini
-            </button>
-            <button
-              type="button"
-              onClick={() => setDateFilterMode('hari_ini')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
-                dateFilterMode === 'hari_ini'
-                  ? 'bg-[#006c49] text-white shadow-xs'
-                  : 'bg-gray-100 text-[#45464d] hover:bg-gray-200'
-              }`}
-            >
-              Hari Ini
-            </button>
-
-            {/* Custom Range */}
-            <div className={`flex flex-wrap sm:flex-nowrap items-center gap-1.5 px-2 py-1 rounded-lg border transition-all ${
-              dateFilterMode === 'rentang'
-                ? 'bg-emerald-50/50 border-[#006c49] ring-1 ring-[#006c49]'
-                : 'bg-gray-50 border-[#c6c6cd]'
-            }`}>
-              <div className="flex items-center gap-1">
-                <span className="text-[11px] font-semibold text-gray-500">Dari:</span>
-                <input
-                  type="date"
-                  value={startDateFilter}
-                  onChange={(e) => {
-                    setStartDateFilter(e.target.value);
-                    setDateFilterMode('rentang');
-                  }}
-                  className="text-xs font-bold text-black bg-transparent outline-none cursor-pointer"
-                />
-              </div>
-              <span className="text-[11px] font-bold text-gray-400">s/d</span>
-              <div className="flex items-center gap-1">
-                <span className="text-[11px] font-semibold text-gray-500">Sampai:</span>
-                <input
-                  type="date"
-                  value={endDateFilter}
-                  onChange={(e) => {
-                    setEndDateFilter(e.target.value);
-                    setDateFilterMode('rentang');
-                  }}
-                  className="text-xs font-bold text-black bg-transparent outline-none cursor-pointer"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="text-[11px] text-gray-500 font-mono-jetbrains">
-            Menampilkan <strong>{filteredPengeluaran.length}</strong> dari {pengeluaranList.length} pengeluaran
-          </div>
-        </div>
-      </div>
-
-      {/* Table (Scrollable with 5 rows view height + sticky header) */}
+      {/* Table (Horizontal scroll for history) */}
       <div className="bg-white rounded-xl border border-[#c6c6cd] shadow-xs overflow-hidden w-full">
         <div className="p-3.5 sm:p-4 border-b border-[#c6c6cd] bg-[#eff4ff]/60 flex justify-between items-center flex-wrap gap-2">
           <div>
             <h3 className="font-bold text-black text-sm sm:text-base">Riwayat Pengeluaran</h3>
-            <p className="text-[11px] text-gray-500">Tampilan 5 riwayat awal (scroll vertikal untuk melihat transaksi pengeluaran lainnya)</p>
+            <p className="text-[11px] text-gray-500">Geser tabel ke samping untuk melihat rincian</p>
           </div>
           <span className="text-xs font-semibold text-red-700 bg-red-50 border border-red-200 px-2.5 py-1 rounded-full font-mono-jetbrains">
-            {filteredPengeluaran.length} Item
+            {pengeluaranList.length} Item
           </span>
         </div>
 
-        <div className="overflow-x-auto w-full max-h-[380px] overflow-y-auto">
+        <div className="overflow-x-auto w-full">
           <table className="w-full text-left border-collapse text-sm min-w-[620px]">
-          <thead className="sticky top-0 z-10 bg-[#eff4ff]">
-            <tr className="text-[#45464d] font-semibold border-b border-[#c6c6cd]">
-              <th className="p-4 bg-[#eff4ff]">ID</th>
-              <th className="p-4 bg-[#eff4ff]">Tanggal</th>
-              <th className="p-4 bg-[#eff4ff]">Kategori</th>
-              <th className="p-4 bg-[#eff4ff]">Sumber Dana / Platform</th>
-              <th className="p-4 bg-[#eff4ff]">Keterangan Pengeluaran</th>
-              <th className="p-4 bg-[#eff4ff] text-right">Jumlah (Rp)</th>
-              <th className="p-4 bg-[#eff4ff] text-center">Aksi</th>
+          <thead>
+            <tr className="bg-[#eff4ff] text-[#45464d] font-semibold border-b border-[#c6c6cd]">
+              <th className="p-4">ID</th>
+              <th className="p-4">Tanggal</th>
+              <th className="p-4">Kategori</th>
+              <th className="p-4">Sumber Dana / Platform</th>
+              <th className="p-4">Keterangan Pengeluaran</th>
+              <th className="p-4 text-right">Jumlah (Rp)</th>
+              <th className="p-4 text-center">Aksi</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[#c6c6cd]/40">
-            {filteredPengeluaran.length === 0 ? (
+            {sortedPengeluaran.length === 0 ? (
               <tr>
                 <td colSpan={7} className="p-8 text-center text-gray-500">
-                  Belum ada catatan pengeluaran toko yang sesuai filter.
+                  Belum ada catatan pengeluaran toko.
                 </td>
               </tr>
             ) : (
-              filteredPengeluaran.map((p) => {
+              sortedPengeluaran.map((p) => {
                 const sDana = p.sumberDana || 'Cash / Tunai';
                 const isCash = sDana.toLowerCase().includes('cash') || sDana.toLowerCase().includes('tunai');
                 return (
