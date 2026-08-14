@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { TransactionItem } from '../types';
 import { formatThousand, parseThousand } from '../utils/formatters';
-import { printViaWebBluetooth, ReceiptData } from '../utils/thermalPrinter';
+import { printViaRawBT, printViaWebBluetooth, ReceiptData } from '../utils/thermalPrinter';
 
 interface CetakStrukModalProps {
   isOpen: boolean;
@@ -146,7 +146,27 @@ ${customNote}
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Direct Bluetooth Thermal Printing
+  // Direct RawBT Intent Printing (Seamless 1-Click for all Bluetooth / USB printers via RawBT app)
+  const handleRawBTPrint = async () => {
+    handleSaveSettings();
+    try {
+      const res = await printViaRawBT(receiptData, paperWidth === '80mm');
+      if (res.success) {
+        setToastMessage({ text: 'Mengirim struk ke RawBT...', type: 'success' });
+      } else {
+        setToastMessage({ text: res.message, type: 'error' });
+      }
+    } catch (err: any) {
+      setToastMessage({
+        text: `Gagal mengirim ke RawBT: ${err.message || 'Pastikan aplikasi RawBT terinstall'}`,
+        type: 'error'
+      });
+    } finally {
+      setTimeout(() => setToastMessage(null), 4000);
+    }
+  };
+
+  // Direct Web Bluetooth BLE Printing
   const handleBluetoothPrint = async () => {
     setIsBluetoothPrinting(true);
     setBluetoothStatus('Mempersiapkan printer Bluetooth...');
@@ -265,7 +285,7 @@ ${customNote}
                   Cetak Struk Transaksi
                 </h3>
                 <p className="text-[11px] text-gray-500">
-                  Cetak langsung thermal Bluetooth & tambah logo toko
+                  Kompatibel 100% via RawBT & printer thermal Bluetooth
                 </p>
               </div>
             </div>
@@ -463,35 +483,45 @@ ${customNote}
 
           {/* Action Buttons */}
           <div className="pt-3 space-y-2 border-t border-gray-100">
-            {/* Direct Bluetooth Printing Button */}
+            {/* Direct RawBT Print Button (PRIMARY - Works with all Bluetooth / USB / WiFi Printers) */}
             <button
-              onClick={handleBluetoothPrint}
-              disabled={isBluetoothPrinting}
-              className="w-full bg-[#006c49] hover:bg-[#006c49]/90 text-white py-2.5 sm:py-3 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center justify-center gap-2 shadow-md active:scale-98 disabled:opacity-50"
+              onClick={handleRawBTPrint}
+              className="w-full bg-[#006c49] hover:bg-[#006c49]/90 text-white py-3 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 shadow-md active:scale-98"
             >
-              <span className="material-symbols-outlined text-[20px]">
-                {isBluetoothPrinting ? 'sync' : 'bluetooth_searching'}
-              </span>
-              {isBluetoothPrinting ? (bluetoothStatus || 'Menghubungkan...') : 'Cetak Langsung via Bluetooth (Thermal POS)'}
+              <span className="material-symbols-outlined text-[22px]">print</span>
+              <span>Cetak Langsung via RawBT</span>
             </button>
 
-            <div className="flex gap-2">
-              {/* Fallback Standard Print */}
+            <div className="grid grid-cols-3 gap-2">
+              {/* Direct Web Bluetooth BLE */}
+              <button
+                onClick={handleBluetoothPrint}
+                disabled={isBluetoothPrinting}
+                title="Cetak via Web Bluetooth BLE langsung dari browser"
+                className="bg-[#f0fdf4] hover:bg-emerald-100 text-[#006c49] border border-emerald-300 py-2 px-1 rounded-lg font-semibold text-xs transition-colors flex items-center justify-center gap-1 disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-[16px]">bluetooth</span>
+                <span className="truncate">BLE Web</span>
+              </button>
+
+              {/* Standard Print / PDF */}
               <button
                 onClick={handleStandardPrint}
-                className="flex-1 bg-[#d3e4fe] hover:bg-[#b9d5ff] text-[#0b1c30] py-2 rounded-lg font-semibold text-xs transition-colors flex items-center justify-center gap-1.5 border border-[#c6c6cd]"
+                title="Dialog cetak bawaan browser atau simpan sebagai PDF"
+                className="bg-[#eff4ff] hover:bg-[#dce9ff] text-[#0b1c30] border border-[#c6c6cd] py-2 px-1 rounded-lg font-semibold text-xs transition-colors flex items-center justify-center gap-1"
               >
-                <span className="material-symbols-outlined text-[16px]">print</span>
-                Cetak Standar / PDF
+                <span className="material-symbols-outlined text-[16px]">picture_as_pdf</span>
+                <span className="truncate">PDF / Print</span>
               </button>
 
               {/* Copy Receipt Text */}
               <button
                 onClick={handleCopyText}
-                className="px-3 bg-gray-100 hover:bg-gray-200 text-[#0b1c30] border border-[#c6c6cd] rounded-lg font-semibold text-xs transition-colors flex items-center gap-1"
+                title="Salin rincian struk untuk dikirim via WhatsApp"
+                className="bg-gray-100 hover:bg-gray-200 text-[#0b1c30] border border-[#c6c6cd] py-2 px-1 rounded-lg font-semibold text-xs transition-colors flex items-center justify-center gap-1"
               >
                 <span className="material-symbols-outlined text-[16px]">content_copy</span>
-                {copied ? 'Tersalin!' : 'Salin Teks'}
+                <span className="truncate">{copied ? 'Tersalin!' : 'Salin Teks'}</span>
               </button>
             </div>
 
@@ -525,7 +555,7 @@ ${customNote}
 
               <div className="text-center font-bold text-sm tracking-tight">{storeName}</div>
               <div className="text-center text-[10px] text-gray-600 mt-0.5">{agentAddress}</div>
-              <div className="text-center text-[10px] text-gray-600 mb-2">Telp: {phone}</div>
+              <div className="text-center text-[10px] text-gray-600 mb-2">Telp: ${phone}</div>
               <div className="border-b border-dashed border-gray-500 my-2"></div>
               
               <div className="flex justify-between text-[11px]">
@@ -585,7 +615,7 @@ ${customNote}
           </div>
 
           <div className="text-center text-[11px] text-[#76777d] mt-2">
-            Format ESC/POS kompatibel untuk printer thermal Bluetooth 58mm / 80mm.
+            Terintegrasi langsung dengan <strong>RawBT Print Service</strong> (ESC/POS 58mm & 80mm).
           </div>
         </div>
       </div>

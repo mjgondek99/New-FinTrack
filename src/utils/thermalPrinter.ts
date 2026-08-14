@@ -1,6 +1,6 @@
 /**
- * Utilities for ESC/POS Bluetooth Thermal Printing and Receipt Formatting
- * Compatible with 58mm and 80mm Thermal Printers (Goojprt, Panda, Iware, Zywell, RPP02, POS-5802, etc.)
+ * Utilities for ESC/POS Bluetooth Thermal Printing, RawBT Intent Integration, and Receipt Formatting
+ * Compatible with RawBT Print Service App and standard 58mm / 80mm ESC/POS Thermal Printers
  */
 
 export interface ReceiptData {
@@ -62,40 +62,40 @@ export async function imageToEscPosBitmap(
         const imgData = ctx.getImageData(0, 0, width, height);
         const data = imgData.data;
 
-        // Convert to 1-bit monochrome bitmap
-        const widthBytes = width / 8;
-        const rasterData: number[] = [];
-
-        // ESC/POS GS v 0 command header: [GS, 'v', '0', m, xL, xH, yL, yH]
-        // m = 0 (normal), xL/xH = width in bytes, yL/yH = height in dots
-        const xL = widthBytes & 0xff;
-        const xH = (widthBytes >> 8) & 0xff;
-        const yL = height & 0xff;
-        const yH = (height >> 8) & 0xff;
-
-        rasterData.push(0x1d, 0x76, 0x30, 0x00, xL, xH, yL, yH);
+        // Grayscale conversion and thresholding (monochrome)
+        const bytesPerLine = width / 8;
+        const bitmapBytes = new Uint8Array(bytesPerLine * height);
 
         for (let y = 0; y < height; y++) {
-          for (let x = 0; x < widthBytes; x++) {
-            let byteVal = 0;
-            for (let b = 0; b < 8; b++) {
-              const pixelX = x * 8 + b;
-              const idx = (y * width + pixelX) * 4;
-              // Grayscale luminance
-              const r = data[idx];
-              const g = data[idx + 1];
-              const bColor = data[idx + 2];
-              const luminance = 0.299 * r + 0.587 * g + 0.114 * bColor;
-              // Threshold (Black = 1, White = 0)
-              if (luminance < 160) {
-                byteVal |= 0x80 >> b;
-              }
+          for (let x = 0; x < width; x++) {
+            const idx = (y * width + x) * 4;
+            const r = data[idx];
+            const g = data[idx + 1];
+            const b = data[idx + 2];
+            // Luminance
+            const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+            const isBlack = gray < 128;
+
+            if (isBlack) {
+              const byteIdx = y * bytesPerLine + Math.floor(x / 8);
+              const bitOffset = 7 - (x % 8);
+              bitmapBytes[byteIdx] |= 1 << bitOffset;
             }
-            rasterData.push(byteVal);
           }
         }
 
-        resolve(new Uint8Array(rasterData));
+        // Build ESC/POS raster bit image command (GS v 0 m xL xH yL yH d1...dk)
+        const xL = bytesPerLine % 256;
+        const xH = Math.floor(bytesPerLine / 256);
+        const yL = height % 256;
+        const yH = Math.floor(height / 256);
+
+        const header = new Uint8Array([0x1d, 0x76, 0x30, 0x00, xL, xH, yL, yH]);
+        const fullCommand = new Uint8Array(header.length + bitmapBytes.length);
+        fullCommand.set(header, 0);
+        fullCommand.set(bitmapBytes, header.length);
+
+        resolve(fullCommand);
       };
       img.onerror = () => resolve(null);
       img.src = base64Src;
@@ -106,46 +106,50 @@ export async function imageToEscPosBitmap(
 }
 
 /**
- * Generate full ESC/POS binary buffer for thermal bluetooth printer
+ * Generate full ESC/POS binary command buffer
  */
-export async function generateEscPosBuffer(data: ReceiptData, is80mm = false): Promise<Uint8Array> {
-  const encoder = new TextEncoder();
+export async function generateEscPosBuffer(
+  data: ReceiptData,
+  is80mm = false
+): Promise<Uint8Array> {
+  const lineLength = is80mm ? 48 : 32;
+  const divider = '-'.repeat(lineLength) + '\n';
+  const doubleDivider = '='.repeat(lineLength) + '\n';
+
   const chunks: Uint8Array[] = [];
 
-  const addBytes = (bytes: number[]) => chunks.push(new Uint8Array(bytes));
-  const addText = (text: string) => chunks.push(encoder.encode(text));
+  const addText = (text: string) => {
+    const encoder = new TextEncoder();
+    chunks.push(encoder.encode(text));
+  };
 
-  const colWidth = is80mm ? 42 : 32;
-  const divider = '-'.repeat(colWidth) + '\n';
-  const doubleDivider = '='.repeat(colWidth) + '\n';
+  const addBytes = (bytes: number[]) => {
+    chunks.push(new Uint8Array(bytes));
+  };
 
-  // Helper for 2 column alignment
-  const formatTwoCol = (left: string, right: string): string => {
-    const spaces = Math.max(1, colWidth - left.length - right.length);
-    return left + ' '.repeat(spaces) + right + '\n';
+  const formatTwoCol = (left: string, right: string) => {
+    const spaceCount = Math.max(1, lineLength - left.length - right.length);
+    return left + ' '.repeat(spaceCount) + right + '\n';
   };
 
   // 1. Initialize Printer (ESC @)
   addBytes([0x1b, 0x40]);
 
-  // 2. Print Logo if present
+  // 2. Logo if present & enabled
   if (data.showLogo && data.logoBase64) {
-    try {
+    const maxWidth = is80mm ? 576 : 384;
+    const logoBytes = await imageToEscPosBitmap(data.logoBase64, Math.min(maxWidth, 240));
+    if (logoBytes) {
       addBytes([0x1b, 0x61, 0x01]); // Align Center
-      const bitmapBytes = await imageToEscPosBitmap(data.logoBase64, is80mm ? 384 : 280);
-      if (bitmapBytes) {
-        chunks.push(bitmapBytes);
-        addBytes([0x0a]); // Line feed
-      }
-    } catch (e) {
-      console.warn('Could not encode receipt logo to bitmap:', e);
+      chunks.push(logoBytes);
+      addBytes([0x0a]); // Line Feed
     }
   }
 
-  // 3. Store Header (Center aligned, Bold, Double Height/Width for Name)
+  // 3. Store Header (Center aligned)
   addBytes([0x1b, 0x61, 0x01]); // Align Center
   addBytes([0x1b, 0x45, 0x01]); // Bold On
-  addBytes([0x1d, 0x21, 0x01]); // Double Height
+  addBytes([0x1d, 0x21, 0x11]); // Double width & height
   addText(data.storeName + '\n');
   addBytes([0x1d, 0x21, 0x00]); // Normal size
   addBytes([0x1b, 0x45, 0x00]); // Bold Off
@@ -206,7 +210,54 @@ export async function generateEscPosBuffer(data: ReceiptData, is80mm = false): P
 }
 
 /**
- * Web Bluetooth Thermal Printer Connection & Print
+ * Print directly using RawBT Print Service via Android Intent Scheme & rawbt: protocol.
+ * RawBT handles all Bluetooth Classic (SPP), BLE, USB, and WiFi thermal printers seamlessly.
+ */
+export async function printViaRawBT(
+  data: ReceiptData,
+  is80mm = false
+): Promise<{ success: boolean; message: string }> {
+  try {
+    // Generate binary ESC/POS buffer
+    const escposBuffer = await generateEscPosBuffer(data, is80mm);
+    
+    // Convert buffer to binary string -> base64
+    let binaryStr = '';
+    for (let i = 0; i < escposBuffer.length; i++) {
+      binaryStr += String.fromCharCode(escposBuffer[i]);
+    }
+    const base64Data = btoa(binaryStr);
+
+    // Try Android Intent URL first (works best in Chrome on Android)
+    const intentUrl = `intent:base64,${base64Data}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;type=application/x-rawbt;end;`;
+    const directRawbtUrl = `rawbt:base64,${base64Data}`;
+
+    // Create an invisible iframe or window location
+    const isAndroid = /android/i.test(navigator.userAgent || '');
+
+    if (isAndroid) {
+      // In Android, launching the intent directly routes to RawBT app
+      window.location.href = intentUrl;
+    } else {
+      // Fallback for other browsers with rawbt protocol
+      window.location.href = directRawbtUrl;
+    }
+
+    return {
+      success: true,
+      message: 'Perintah cetak dikirim ke aplikasi RawBT.'
+    };
+  } catch (err: any) {
+    console.error('RawBT print error:', err);
+    return {
+      success: false,
+      message: `Gagal mengirim ke RawBT: ${err.message || 'Terjadi kesalahan'}`
+    };
+  }
+}
+
+/**
+ * Web Bluetooth Thermal Printer Connection & Print (Direct BLE)
  */
 export async function printViaWebBluetooth(
   data: ReceiptData,
@@ -216,7 +267,7 @@ export async function printViaWebBluetooth(
   if (typeof navigator === 'undefined' || !(navigator as any).bluetooth) {
     return {
       success: false,
-      message: 'Browser Anda belum mendukung Web Bluetooth. Gunakan Google Chrome di Android / PC, atau gunakan Cetak Standar.'
+      message: 'Browser Anda belum mendukung Web Bluetooth. Gunakan tombol Cetak Langsung via RawBT.'
     };
   }
 
