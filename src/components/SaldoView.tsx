@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MutasiSaldoItem, UserAccount, TransactionItem, PengeluaranItem } from '../types';
+import { MutasiSaldoItem, UserAccount, TransactionItem, PengeluaranItem, KasbonItem } from '../types';
 import { formatThousand, parseThousand } from '../utils/formatters';
 import { sortByDateDesc } from '../utils/dateSorter';
 import { isDanaPlatform, calculateDanaMonthlyQuota, DANA_MONTHLY_LIMIT } from '../utils/danaLimit';
@@ -14,6 +14,7 @@ interface SaldoViewProps {
   currentUser?: UserAccount;
   transactions?: TransactionItem[];
   pengeluaranList?: PengeluaranItem[];
+  kasbons?: KasbonItem[];
 }
 
 export const SaldoView: React.FC<SaldoViewProps> = ({
@@ -25,7 +26,8 @@ export const SaldoView: React.FC<SaldoViewProps> = ({
   onNavigateToExport,
   currentUser,
   transactions = [],
-  pengeluaranList = []
+  pengeluaranList = [],
+  kasbons = []
 }) => {
   // Modal State for Set Saldo Awal
   const [showSaldoAwalModal, setShowSaldoAwalModal] = useState(false);
@@ -64,6 +66,13 @@ export const SaldoView: React.FC<SaldoViewProps> = ({
   // Search & Filter
   const [searchTerm, setSearchTerm] = useState('');
   const [platformFilter, setPlatformFilter] = useState('Semua');
+
+  // Date Filter State for Mutasi
+  const todayStr = new Date().toISOString().split('T')[0];
+  const firstDayOfMonthStr = `${todayStr.slice(0, 7)}-01`;
+  const [dateFilterMode, setDateFilterMode] = useState<'semua' | 'hari_ini' | 'bulan_ini' | 'rentang'>('semua');
+  const [startDateFilter, setStartDateFilter] = useState<string>(firstDayOfMonthStr);
+  const [endDateFilter, setEndDateFilter] = useState<string>(todayStr);
 
   // Helper to identify Cash platform
   const isCashPlatform = (name: string) => {
@@ -104,9 +113,11 @@ export const SaldoView: React.FC<SaldoViewProps> = ({
 
     if (isCashPlatform(platformName)) {
       // CASH / TUNAI Mechanics:
-      // + Cash diterima dari pelanggan saat Transfer/TopUp/Pembayaran (Nominal + Admin Luar, atau Nominal + Admin Dalam jika tidak ada admin luar)
+      // + Cash diterima dari transaksi lunas (bukan kasbon)
       // - Cash diserahkan ke pelanggan saat Tarik Tunai (Nominal)
-      // - Total pengeluaran toko dari Cash
+      // - Pengeluaran toko dari Cash
+      // - Kasbon tunai standalone yang dipinjamkan
+      // + Pembayaran cicilan kasbon yang diterima tunai
       let cashDiterima = 0;
       let cashDikeluarkan = 0;
 
@@ -118,21 +129,41 @@ export const SaldoView: React.FC<SaldoViewProps> = ({
 
           if (t.jenis === 'Tarik Tunai') {
             cashDikeluarkan += t.jumlah;
-          } else {
+          } else if (!t.isKasbon) {
+            // Hanya tambah kas jika bukan kasbon
             cashDiterima += totalTagihan;
           }
         }
       });
 
-      const totalBalance = awal + mutasiMasuk - mutasiKeluar + cashDiterima - cashDikeluarkan - totalPengeluaran;
+      // Cicilan kasbon yang diterima
+      let cicilanKasbonMasuk = 0;
+      let standaloneKasbonKeluar = 0;
+
+      const transactionKasbonIds = new Set(
+        transactions.filter((t) => t.kasbonId).map((t) => t.kasbonId)
+      );
+
+      kasbons.forEach((k) => {
+        // Pembayaran cicilan yang masuk
+        const terbayar = (k.riwayatPembayaran || []).reduce((sum, r) => sum + r.jumlah, 0);
+        cicilanKasbonMasuk += terbayar;
+
+        // Jika kasbon berdiri sendiri (bukan dari transaksi transfer), kasbon tunai ini mengeluarkan uang kas
+        if (!transactionKasbonIds.has(k.id)) {
+          standaloneKasbonKeluar += k.totalKasbon;
+        }
+      });
+
+      const totalBalance = awal + mutasiMasuk - mutasiKeluar + cashDiterima + cicilanKasbonMasuk - cashDikeluarkan - standaloneKasbonKeluar - totalPengeluaran;
 
       return {
         totalBalance,
         awal,
         mutasiMasuk,
         mutasiKeluar,
-        trxMasuk: cashDiterima,
-        trxKeluar: cashDikeluarkan,
+        trxMasuk: cashDiterima + cicilanKasbonMasuk,
+        trxKeluar: cashDikeluarkan + standaloneKasbonKeluar,
         pengeluaran: totalPengeluaran
       };
     } else {
@@ -381,7 +412,24 @@ export const SaldoView: React.FC<SaldoViewProps> = ({
         platformFilter === 'Semua' ||
         m.platform === platformFilter ||
         m.sumber.toLowerCase().includes(platformFilter.toLowerCase());
-      return matchSearch && matchPlatform;
+
+      const itemDate = m.waktu.split(' ')[0];
+      let matchDate = true;
+      if (dateFilterMode === 'hari_ini') {
+        matchDate = itemDate === todayStr;
+      } else if (dateFilterMode === 'bulan_ini') {
+        matchDate = itemDate.startsWith(todayStr.slice(0, 7));
+      } else if (dateFilterMode === 'rentang') {
+        if (startDateFilter && endDateFilter) {
+          matchDate = itemDate >= startDateFilter && itemDate <= endDateFilter;
+        } else if (startDateFilter) {
+          matchDate = itemDate >= startDateFilter;
+        } else if (endDateFilter) {
+          matchDate = itemDate <= endDateFilter;
+        }
+      }
+
+      return matchSearch && matchPlatform && matchDate;
     })
   );
 
@@ -694,50 +742,129 @@ export const SaldoView: React.FC<SaldoViewProps> = ({
         </div>
 
         {/* Filter Bar */}
-        <div className="flex flex-col sm:flex-row gap-3 pt-2">
-          <div className="relative flex-1">
-            <span className="material-symbols-outlined absolute left-3 top-2.5 text-gray-400 text-[18px]">
-              search
-            </span>
-            <input
-              type="text"
-              placeholder="Cari ID mutasi, keterangan, provider..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-3 py-2 border border-[#c6c6cd] rounded-xl text-xs bg-white text-black"
-            />
+        <div className="flex flex-col gap-3 pt-2">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <span className="material-symbols-outlined absolute left-3 top-2.5 text-gray-400 text-[18px]">
+                search
+              </span>
+              <input
+                type="text"
+                placeholder="Cari ID mutasi, keterangan, provider..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 border border-[#c6c6cd] rounded-xl text-xs bg-white text-black"
+              />
+            </div>
+
+            <select
+              value={platformFilter}
+              onChange={(e) => setPlatformFilter(e.target.value)}
+              className="p-2 border border-[#c6c6cd] rounded-xl text-xs bg-white font-medium text-black"
+            >
+              <option value="Semua">Semua Provider</option>
+              {platforms.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
           </div>
 
-          <select
-            value={platformFilter}
-            onChange={(e) => setPlatformFilter(e.target.value)}
-            className="p-2 border border-[#c6c6cd] rounded-xl text-xs bg-white font-medium text-black"
-          >
-            <option value="Semua">Semua Provider</option>
-            {platforms.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
+          {/* Date Filter Bar */}
+          <div className="pt-2 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
+              <span className="text-xs font-semibold text-[#45464d] flex items-center gap-1">
+                <span className="material-symbols-outlined text-[16px]">calendar_month</span>
+                Filter Tanggal:
+              </span>
+              <button
+                type="button"
+                onClick={() => setDateFilterMode('semua')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
+                  dateFilterMode === 'semua'
+                    ? 'bg-[#006c49] text-white shadow-xs'
+                    : 'bg-gray-100 text-[#45464d] hover:bg-gray-200'
+                }`}
+              >
+                Semua Data
+              </button>
+              <button
+                type="button"
+                onClick={() => setDateFilterMode('bulan_ini')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
+                  dateFilterMode === 'bulan_ini'
+                    ? 'bg-[#006c49] text-white shadow-xs'
+                    : 'bg-gray-100 text-[#45464d] hover:bg-gray-200'
+                }`}
+              >
+                Bulan Ini
+              </button>
+              <button
+                type="button"
+                onClick={() => setDateFilterMode('hari_ini')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
+                  dateFilterMode === 'hari_ini'
+                    ? 'bg-[#006c49] text-white shadow-xs'
+                    : 'bg-gray-100 text-[#45464d] hover:bg-gray-200'
+                }`}
+              >
+                Hari Ini
+              </button>
+
+              {/* Custom Range */}
+              <div className={`flex flex-wrap sm:flex-nowrap items-center gap-1.5 px-2 py-1 rounded-lg border transition-all ${
+                dateFilterMode === 'rentang'
+                  ? 'bg-emerald-50/50 border-[#006c49] ring-1 ring-[#006c49]'
+                  : 'bg-gray-50 border-[#c6c6cd]'
+              }`}>
+                <div className="flex items-center gap-1">
+                  <span className="text-[11px] font-semibold text-gray-500">Dari:</span>
+                  <input
+                    type="date"
+                    value={startDateFilter}
+                    onChange={(e) => {
+                      setStartDateFilter(e.target.value);
+                      setDateFilterMode('rentang');
+                    }}
+                    className="text-xs font-bold text-black bg-transparent outline-none cursor-pointer"
+                  />
+                </div>
+                <span className="text-[11px] font-bold text-gray-400">s/d</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-[11px] font-semibold text-gray-500">Sampai:</span>
+                  <input
+                    type="date"
+                    value={endDateFilter}
+                    onChange={(e) => {
+                      setEndDateFilter(e.target.value);
+                      setDateFilterMode('rentang');
+                    }}
+                    className="text-xs font-bold text-black bg-transparent outline-none cursor-pointer"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="text-[11px] text-gray-500 font-mono-jetbrains">
+              Menampilkan <strong>{filteredMutasis.length}</strong> dari {mutasis.length} mutasi
+            </div>
+          </div>
         </div>
 
-        {/* Mutasi Table (Only Table scrolls horizontally on Mobile) */}
-        <div className="overflow-x-auto border border-[#c6c6cd]/60 rounded-xl w-full">
-          <div className="p-2.5 bg-[#eff4ff]/40 border-b border-[#c6c6cd]/40 text-[11px] text-gray-500 font-medium sm:hidden">
-            👈 Geser tabel ke samping untuk melihat rincian mutasi
-          </div>
+        {/* Mutasi Table (Scrollable table with 5 rows view height + sticky header) */}
+        <div className="overflow-x-auto border border-[#c6c6cd]/60 rounded-xl w-full max-h-[380px] overflow-y-auto">
           <table className="w-full text-left border-collapse text-sm min-w-[680px]">
-            <thead>
+            <thead className="sticky top-0 z-10 bg-[#eff4ff]">
               <tr className="bg-[#eff4ff] text-[#45464d] font-bold border-b border-[#c6c6cd] text-xs">
-                <th className="p-3">ID Mutasi</th>
-                <th className="p-3">Waktu</th>
-                <th className="p-3">Provider</th>
-                <th className="p-3">Jenis</th>
-                <th className="p-3">Sumber / Keterangan</th>
-                <th className="p-3 text-right">Nominal</th>
-                <th className="p-3 text-right">Saldo Akhir</th>
-                <th className="p-3 text-center">Aksi</th>
+                <th className="p-3 bg-[#eff4ff]">ID Mutasi</th>
+                <th className="p-3 bg-[#eff4ff]">Waktu</th>
+                <th className="p-3 bg-[#eff4ff]">Provider</th>
+                <th className="p-3 bg-[#eff4ff]">Jenis</th>
+                <th className="p-3 bg-[#eff4ff]">Sumber / Keterangan</th>
+                <th className="p-3 bg-[#eff4ff] text-right">Nominal</th>
+                <th className="p-3 bg-[#eff4ff] text-right">Saldo Akhir</th>
+                <th className="p-3 bg-[#eff4ff] text-center">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#c6c6cd]/40 text-xs">

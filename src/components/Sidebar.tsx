@@ -23,6 +23,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const allMenuItems: { id: NavTab; label: string; icon: string }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
     { id: 'transaksi', label: 'Transaksi', icon: 'receipt_long' },
+    { id: 'pelanggan', label: 'Pelanggan', icon: 'groups' },
     { id: 'laporan', label: 'Laporan Keuangan', icon: 'analytics' },
     { id: 'kasbon', label: 'Kasbon', icon: 'account_balance_wallet' },
     { id: 'pengeluaran', label: 'Pengeluaran', icon: 'payments' },
@@ -33,7 +34,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'pengaturan', label: 'Pengaturan', icon: 'settings' },
   ];
 
-  const allowedKasirTabs: NavTab[] = ['transaksi', 'pengeluaran', 'saldo', 'pengaturan', 'akun'];
+  const allowedKasirTabs: NavTab[] = ['transaksi', 'pelanggan', 'pengeluaran', 'saldo', 'pengaturan', 'akun'];
 
   const menuItems = currentUserRole === 'kasir'
     ? allMenuItems.filter((item) => allowedKasirTabs.includes(item.id))
