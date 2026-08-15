@@ -33,13 +33,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ activeTab }) => {
     setTimeout(() => setSavedSuccess(false), 3000);
   };
 
-  const handleResetData = () => {
-    if (window.confirm('Apakah Anda yakin ingin menghapus seluruh data lokal (transaksi, kasbon, pengeluaran, akun) dan mengembalikan ke awal? Action ini tidak bisa dibatalkan.')) {
-      localStorage.clear();
-      window.location.reload();
-    }
-  };
-
   const profileImg = "https://lh3.googleusercontent.com/aida-public/AB6AXuDF9U4CSCjhOmmHyRpV9fMEoHdq7v_PLRO2pfrC-LsrdAZFiD2XaUCCsq5yxLY8CA6VOXTFHVukJKAvhFXaJ3M8UEOwB7it6tJ5ONKSQBMOFSeSs473lpc5bLS7oZZhkRcDEne5XMObGJpccu5jKdHLjkTj-5C9vWEBvC9pXU25wXemoNICJSumtgVh070E-VvEy80BJP5-pUt-mwFc8RLCE8eviNEirOnAanA_RrWm9_U37Gz7Jfkw";
 
   return (
@@ -134,20 +127,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ activeTab }) => {
             </button>
           </div>
         </form>
-
-        <div className="pt-6 border-t border-gray-100 space-y-2">
-          <h4 className="font-bold text-sm text-red-600">Zona Bahaya</h4>
-          <p className="text-xs text-gray-500">
-            Jika ingin mengosongkan seluruh data transaksi, akun, dan riwayat yang tersimpan di browser ini, klik tombol di bawah.
-          </p>
-          <button
-            type="button"
-            onClick={handleResetData}
-            className="px-4 py-2 border border-red-300 text-red-600 hover:bg-red-50 rounded-lg text-xs font-semibold transition-colors"
-          >
-            Reset Seluruh Data Lokal
-          </button>
-        </div>
       </div>
     </div>
   );
