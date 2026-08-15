@@ -92,7 +92,7 @@ export const TransaksiView: React.FC<TransaksiViewProps> = ({
 
   const handleOpenEdit = (t: TransactionItem) => {
     setEditingTrx(t);
-    const parts = t.tanggal.split(' ');
+    const parts = (t.tanggal || '').split(' ');
     setEditDate(parts[0] || defaultDate);
     setEditTime(parts[1] || defaultTime);
     setEditPlatform(t.platform);
@@ -150,11 +150,11 @@ export const TransaksiView: React.FC<TransaksiViewProps> = ({
   const filtered = sortByDateDesc(
     transactions.filter((t) => {
       const matchesSearch =
-        t.pelanggan.toLowerCase().includes(search.toLowerCase()) ||
-        t.id.toLowerCase().includes(search.toLowerCase());
+        (t.pelanggan || '').toLowerCase().includes(search.toLowerCase()) ||
+        (t.id || '').toLowerCase().includes(search.toLowerCase());
       const matchesPlatform = platformFilter === 'Semua' || t.platform === platformFilter;
 
-      const itemDate = t.tanggal.split(' ')[0];
+      const itemDate = (t.tanggal || '').split(' ')[0];
       let matchesDate = true;
       if (dateFilterMode === 'hari_ini') {
         matchesDate = itemDate === todayStr;
